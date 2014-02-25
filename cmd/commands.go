@@ -1,14 +1,34 @@
 package cmd
 
 import (
+	_ "fmt"
 	"github.com/pmorie/go-sti/sti"
 	"github.com/smarterclayton/cobra"
+	"io/ioutil"
+	"strings"
 )
+
+func parseEnvs(envStr string) ([]sti.Env, error) {
+	// TODO: error handling
+	var envs []sti.Env
+	pairs := strings.Split(envStr, ",")
+
+	for _, pair := range pairs {
+		atoms := strings.Split(pair, "=")
+		name := atoms[0]
+		value := atoms[1]
+
+		env := sti.Env{name, value}
+		envs = append(envs, env)
+	}
+
+	return envs, nil
+}
 
 func Execute() {
 	var (
-		help bool
-		req  sti.Request
+		req       sti.Request
+		envString string
 	)
 
 	buildReq := sti.BuildRequest{Request: req}
@@ -23,21 +43,33 @@ func Execute() {
 			cmd.Usage()
 		},
 	}
-	stiCmd.Flags().BoolVarP(&help, "help", "h", false, "Get help")
 	stiCmd.PersistentFlags().StringVarP(&(req.DockerSocket), "url", "U", "unix:///var/run/docker.sock", "Set the url of the docker socket to use")
-	stiCmd.PersistentFlags().IntVarP(&(req.DockerTimeout), "timeout", "T", 30, "Set the timeout for docker operations")
+	stiCmd.PersistentFlags().IntVar(&(req.DockerTimeout), "timeout", 30, "Set the timeout for docker operations")
 
 	buildCmd := &cobra.Command{
 		Use:   "build SOURCE BASE_IMAGE TAG",
 		Short: "Build an image",
 		Long:  "Build an image",
 		Run: func(cmd *cobra.Command, args []string) {
+			buildReq.Source = args[0]
+			buildReq.BaseImage = args[1]
+			buildReq.Tag = args[2]
+
+			envs, _ := parseEnvs(envString)
+			buildReq.Environment = envs
+
+			if buildReq.WorkingDir == "tempdir" {
+				buildReq.WorkingDir, err = ioutil.TempDir("", "sti")
+				defer os.Remove(buildReq.WorkingDir)
+			}
 
 			sti.Build(buildReq)
 		},
 	}
-	buildCmd.Flags().BoolVarP(&(buildReq.Clean), "clean", "C", false, "Perform a clean build")
-	buildCmd.Flags().StringVarP(&(req.RuntimeImage), "runtime-image", "R", "", "Set the runtime image to use")
+	buildCmd.Flags().BoolVar(&(buildReq.Clean), "clean", false, "Perform a clean build")
+	buildCmd.Flags().StringVar(&(req.WorkingDir), "dir", "tempdir", "Directory where generated Dockerfiles and other support scripts are created")
+	buildCmd.Flags().StringVar(&(req.RuntimeImage), "runtime-image", "", "Set the runtime image to use")
+	buildCmd.Flags().StringVarP(&envString, "env", "e", "", "Specify an environment var NAME=VALUE,NAME2=VALUE2,...")
 	stiCmd.AddCommand(buildCmd)
 
 	validateCmd := &cobra.Command{
