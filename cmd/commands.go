@@ -46,6 +46,7 @@ func Execute() {
 	}
 	stiCmd.PersistentFlags().StringVarP(&(req.DockerSocket), "url", "U", "unix:///var/run/docker.sock", "Set the url of the docker socket to use")
 	stiCmd.PersistentFlags().IntVar(&(req.DockerTimeout), "timeout", 30, "Set the timeout for docker operations")
+	stiCmd.PersistentFlags().BoolVar(&(req.Debug), "debug", false, "Enable debugging output")
 
 	buildCmd := &cobra.Command{
 		Use:   "build SOURCE BASE_IMAGE TAG",

@@ -1,8 +1,8 @@
 package sti
 
 import (
+	"bytes"
 	"github.com/fsouza/go-dockerclient"
-	"io/ioutil"
 	"log"
 )
 
@@ -21,6 +21,7 @@ type Request struct {
 
 type DockerConnection struct {
 	dockerClient *docker.Client
+	debug        bool
 }
 
 func newConnection(req *Request) (*DockerConnection, error) {
@@ -30,7 +31,7 @@ func newConnection(req *Request) (*DockerConnection, error) {
 		return nil, ErrDockerConnectionFailed
 	}
 
-	return &DockerConnection{dockerClient}, nil
+	return &DockerConnection{dockerClient, req.Debug}, nil
 }
 
 func (c DockerConnection) isImageInLocalRegistry(imageName string) (bool, error) {
@@ -78,6 +79,10 @@ func (c DockerConnection) checkAndPull(imageName string) (*docker.Image, error) 
 	}
 
 	if image == nil {
+		if c.debug {
+			log.Printf("Pulling image %s\n", imageName)
+		}
+
 		err = c.dockerClient.PullImage(docker.PullImageOptions{Repository: imageName}, docker.AuthConfiguration{})
 		if err != nil {
 			return nil, ErrPullImageFailed
@@ -87,7 +92,7 @@ func (c DockerConnection) checkAndPull(imageName string) (*docker.Image, error) 
 		if err != nil {
 			return nil, err
 		}
-	} else {
+	} else if c.debug {
 		log.Printf("Image %s available locally\n", imageName)
 	}
 
@@ -99,5 +104,15 @@ func (c DockerConnection) hasEntryPoint(image *docker.Image) bool {
 }
 
 func (c DockerConnection) fileExistsInContainer(cId string, path string) bool {
-	return nil == c.dockerClient.CopyFromContainer(docker.CopyFromContainerOptions{ioutil.Discard, cId, path})
+	var buf []byte
+	writer := bytes.NewBuffer(buf)
+
+	err := c.dockerClient.CopyFromContainer(docker.CopyFromContainerOptions{writer, cId, path})
+	content := writer.String()
+
+	if c.debug {
+		log.Printf("File %s in container %s: {%s}\n", path, cId, content)
+	}
+
+	return ((err == nil) && ("" != content))
 }

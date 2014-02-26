@@ -92,6 +92,8 @@ func (c DockerConnection) validateRequiredFiles(imageName string, files []string
 		if !c.fileExistsInContainer(container.ID, file) {
 			log.Printf("ERROR: Image %s is missing %s\n", imageName, file)
 			return false, nil
+		} else if c.debug {
+			log.Printf("OK: Image %s contains file %s\n", imageName, file)
 		}
 	}
 
