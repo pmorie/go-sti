@@ -3,8 +3,9 @@ package sti
 import (
 	"bufio"
 	"bytes"
-	"fmt"
 	"github.com/fsouza/go-dockerclient"
+	"io"
+	"log"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -24,18 +25,16 @@ type BuildRequest struct {
 	Tag         string
 	Clean       bool
 	Environment []Env
+	Writer      io.Writer
 }
 
 type BuildResult struct {
-	Success bool
-	Output  []string
+	Success  bool
+	Messages []string
 }
 
 func Build(req BuildRequest) (*BuildResult, error) {
-	fmt.Printf("%+v\n", req)
-
 	c, err := newConnection(req.Request)
-
 	if err != nil {
 		return nil, err
 	}
@@ -57,9 +56,17 @@ func Build(req BuildRequest) (*BuildResult, error) {
 		}
 	}
 
+	if c.debug {
+		if incremental {
+			log.Printf("Existing image for tag %s detected for incremental build\n", req.Tag)
+		} else {
+			log.Printf("Clean build will be performed")
+		}
+	}
+
 	var result *BuildResult
 
-	if req.RuntimeImage != "" {
+	if req.RuntimeImage == "" {
 		result, err = c.build(req, incremental)
 	} else {
 		result, err = c.extendedBuild(req, incremental)
@@ -78,7 +85,41 @@ func (c DockerConnection) detectIncrementalBuild(tag string) (bool, error) {
 	return c.fileExistsInContainer(container.ID, "/usr/bin/save-artifacts"), nil
 }
 
+func (c DockerConnection) build(req BuildRequest, incremental bool) (*BuildResult, error) {
+	if c.debug {
+		log.Printf("Performing source build from %s\n", req.Source)
+	}
+	if incremental {
+		artifactTmpDir := filepath.Join(req.WorkingDir, "artifacts")
+		err := os.Mkdir(artifactTmpDir, 0700)
+		if err != nil {
+			return nil, err
+		}
+
+		err = c.saveArtifacts(req.Tag, artifactTmpDir)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	targetSourceDir := filepath.Join(req.WorkingDir, "src")
+	err := c.prepareSourceDir(req.Source, targetSourceDir)
+	if err != nil {
+		return nil, err
+	}
+
+	return c.buildDeployableImage(req, req.WorkingDir, incremental)
+}
+
+func (c DockerConnection) extendedBuild(req BuildRequest, incremental bool) (*BuildResult, error) {
+	return nil, nil
+}
+
 func (c DockerConnection) saveArtifacts(image string, path string) error {
+	if c.debug {
+		log.Printf("Saving build artifacts from image %s to path %s\n", image, path)
+	}
+
 	var volumeMap map[string]struct{}
 	volumeMap = make(map[string]struct{})
 	volumeMap["/usr/artifacts"] = *new(struct{})
@@ -105,39 +146,23 @@ func (c DockerConnection) saveArtifacts(image string, path string) error {
 	return nil
 }
 
-func (c DockerConnection) build(req BuildRequest, incremental bool) (*BuildResult, error) {
-	if incremental {
-		artifactTmpDir := filepath.Join(req.WorkingDir, "artifacts")
-		err := os.Mkdir(artifactTmpDir, 0700)
-		if err != nil {
-			return nil, err
-		}
-
-		err = c.saveArtifacts(req.Tag, artifactTmpDir)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	targetSourceDir := filepath.Join(req.WorkingDir, "src")
-	c.prepareSourceDir(req.Source, targetSourceDir)
-
-	return c.buildDeployableImage(req, req.WorkingDir, incremental)
-}
-
-func (c DockerConnection) extendedBuild(req BuildRequest, incremental bool) (*BuildResult, error) {
-	return nil, nil
-}
-
-func (c DockerConnection) prepareSourceDir(source string, targetSourceDir string) {
+func (c DockerConnection) prepareSourceDir(source string, targetSourceDir string) error {
 	re := regexp.MustCompile("^git://")
 
 	if re.MatchString(source) {
-		// TODO: git clone
+		if c.debug {
+			log.Printf("Fetching %s to directory %s", source, targetSourceDir)
+		}
+		err := gitClone(source, targetSourceDir)
+		if err != nil {
+			return err
+		}
 	} else {
 		// TODO: investigate using bind-mounts instead
 		copy(source, targetSourceDir)
 	}
+
+	return nil
 }
 
 var dockerFileTemplate = template.Must(template.New("Dockerfile").Parse("" +
@@ -149,7 +174,8 @@ var dockerFileTemplate = template.Must(template.New("Dockerfile").Parse("" +
 	"CMD /usr/bin/run\n"))
 
 func (c DockerConnection) buildDeployableImage(req BuildRequest, contextDir string, incremental bool) (*BuildResult, error) {
-	dockerFile, err := openFileExclusive(filepath.Join(contextDir, "Dockerfile"), 0700)
+	dockerFilePath := filepath.Join(contextDir, "Dockerfile")
+	dockerFile, err := openFileExclusive(dockerFilePath, 0700)
 	if err != nil {
 		return nil, err
 	}
@@ -165,18 +191,40 @@ func (c DockerConnection) buildDeployableImage(req BuildRequest, contextDir stri
 		return nil, ErrCreateDockerfileFailed
 	}
 
+	if c.debug {
+		log.Printf("Wrote Dockerfile for build to %s\n", dockerFilePath)
+	}
+
 	tarBall, err := tarDirectory(contextDir)
 	if err != nil {
 		return nil, err
 	}
 
-	tarReader := bufio.NewReader(tarBall)
-	var buf []byte
-	writer := bytes.NewBuffer(buf)
+	if c.debug {
+		log.Printf("Created tarball for %s at %s\n", contextDir, tarBall.Name())
+	}
 
-	err = c.dockerClient.BuildImage(docker.BuildImageOptions{req.Tag, false, false, true, tarReader, writer, ""})
-	rawOutput := writer.String()
-	output := strings.Split(rawOutput, "\n")
+	tarInput, err := os.Open(tarBall.Name())
+	if err != nil {
+		return nil, err
+	}
+	defer tarInput.Close()
+	tarReader := bufio.NewReader(tarInput)
+	var output []string
+
+	if req.Writer != nil {
+		err = c.dockerClient.BuildImage(docker.BuildImageOptions{req.Tag, false, false, true, tarReader, req.Writer, ""})
+	} else {
+		var buf []byte
+		writer := bytes.NewBuffer(buf)
+		err = c.dockerClient.BuildImage(docker.BuildImageOptions{req.Tag, false, false, true, tarReader, writer, ""})
+		rawOutput := writer.String()
+		output = strings.Split(rawOutput, "\n")
+	}
+
+	if err != nil {
+		return nil, err
+	}
 
 	return &BuildResult{(err != nil), output}, nil
 }

@@ -2,15 +2,17 @@ package sti
 
 import (
 	"archive/tar"
+	"bytes"
 	"io"
 	"io/ioutil"
 	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 )
 
-func writeTar(tw *tar.Writer, path string, fi os.FileInfo) error {
+func writeTar(tw *tar.Writer, path string, relative string, fi os.FileInfo) error {
 	fr, err := os.Open(path)
 	if err != nil {
 		return err
@@ -18,7 +20,7 @@ func writeTar(tw *tar.Writer, path string, fi os.FileInfo) error {
 	defer fr.Close()
 
 	h := new(tar.Header)
-	h.Name = path
+	h.Name = strings.Replace(path, relative, ".", 1)
 	h.Size = fi.Size()
 	h.Mode = int64(fi.Mode())
 	h.ModTime = fi.ModTime()
@@ -33,7 +35,6 @@ func writeTar(tw *tar.Writer, path string, fi os.FileInfo) error {
 }
 
 func tarDirectory(dir string) (*os.File, error) {
-	log.Printf("Creating tarball for %s\n", dir)
 	fw, err := ioutil.TempFile("", "sti-tar")
 	if err != nil {
 		return nil, err
@@ -45,7 +46,7 @@ func tarDirectory(dir string) (*os.File, error) {
 
 	err = filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
 		if !info.IsDir() {
-			err = writeTar(tw, path, info)
+			err = writeTar(tw, path, dir, info)
 			if err != nil {
 				return err
 			}
@@ -66,6 +67,9 @@ func copy(sourcePath string, targetPath string) error {
 	return cmd.Run()
 }
 
-func gitCheckout(source string, targetPath string) error {
-	return nil
+func gitClone(source string, targetPath string) error {
+	cmd := exec.Command("git", "clone", "--quiet", source, targetPath)
+	err := cmd.Run()
+
+	return err
 }
