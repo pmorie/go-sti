@@ -2,10 +2,8 @@ package sti
 
 import (
 	"archive/tar"
-	"bytes"
 	"io"
 	"io/ioutil"
-	"log"
 	"os"
 	"os/exec"
 	"path/filepath"

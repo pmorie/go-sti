@@ -226,7 +226,7 @@ func (c DockerConnection) buildDeployableImage(req BuildRequest, contextDir stri
 		return nil, err
 	}
 
-	return &BuildResult{(err != nil), output}, nil
+	return &BuildResult{true, output}, nil
 }
 
 func openFileExclusive(path string, mode os.FileMode) (*os.File, error) {
