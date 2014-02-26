@@ -10,6 +10,10 @@ import (
 )
 
 func parseEnvs(envStr string) ([]sti.Env, error) {
+	if envStr == "" {
+		return nil, nil
+	}
+
 	// TODO: error handling
 	var envs []sti.Env
 	pairs := strings.Split(envStr, ",")
@@ -56,6 +60,7 @@ func Execute() {
 			buildReq.Source = args[0]
 			buildReq.BaseImage = args[1]
 			buildReq.Tag = args[2]
+			buildReq.Writer = os.Stdout
 
 			envs, _ := parseEnvs(envString)
 			buildReq.Environment = envs
@@ -70,7 +75,15 @@ func Execute() {
 				defer os.Remove(buildReq.WorkingDir)
 			}
 
-			sti.Build(buildReq)
+			res, err := sti.Build(buildReq)
+			if err != nil {
+				fmt.Printf("An error occured: %s\n", err.Error())
+				return
+			}
+
+			for _, message := range res.Messages {
+				fmt.Println(message)
+			}
 		},
 	}
 	buildCmd.Flags().BoolVar(&(buildReq.Clean), "clean", false, "Perform a clean build")
