@@ -3,6 +3,7 @@ package sti
 import (
 	"github.com/fsouza/go-dockerclient"
 	"io/ioutil"
+	"log"
 )
 
 type Configuration struct {
@@ -46,7 +47,7 @@ func (c DockerConnection) isImageInLocalRegistry(imageName string) (bool, error)
 
 func (c DockerConnection) containerFromImage(imageName string) (*docker.Container, error) {
 	// TODO: set command?
-	config := docker.Config{Image: imageName, AttachStdout: false, AttachStderr: false}
+	config := docker.Config{Image: imageName, AttachStdout: false, AttachStderr: false, Cmd: []string{"/bin/true"}}
 	container, err := c.dockerClient.CreateContainer(docker.CreateContainerOptions{Name: "", Config: &config})
 	if err != nil {
 		return nil, err
@@ -63,6 +64,7 @@ func (c DockerConnection) containerFromImage(imageName string) (*docker.Containe
 	}
 
 	if exitCode != 0 {
+		log.Printf("Container exit code: %d\n", exitCode)
 		return nil, ErrCreateContainerFailed
 	}
 
@@ -85,6 +87,8 @@ func (c DockerConnection) checkAndPull(imageName string) (*docker.Image, error) 
 		if err != nil {
 			return nil, err
 		}
+	} else {
+		log.Printf("Image %s available locally\n", imageName)
 	}
 
 	return image, nil

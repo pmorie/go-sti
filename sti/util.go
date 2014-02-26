@@ -4,6 +4,7 @@ import (
 	"archive/tar"
 	"io"
 	"io/ioutil"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -32,6 +33,7 @@ func writeTar(tw *tar.Writer, path string, fi os.FileInfo) error {
 }
 
 func tarDirectory(dir string) (*os.File, error) {
+	log.Printf("Creating tarball for %s\n", dir)
 	fw, err := ioutil.TempFile("", "sti-tar")
 	if err != nil {
 		return nil, err

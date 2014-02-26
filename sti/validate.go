@@ -3,6 +3,7 @@ package sti
 import (
 	"fmt"
 	"github.com/fsouza/go-dockerclient"
+	"log"
 )
 
 type ValidateRequest struct {
@@ -11,8 +12,8 @@ type ValidateRequest struct {
 }
 
 type ValidateResult struct {
-	Valid  bool
-	Errors []string
+	Valid    bool
+	Messages []string
 }
 
 func Validate(req ValidateRequest) (*ValidateResult, error) {
@@ -53,6 +54,7 @@ func Validate(req ValidateRequest) (*ValidateResult, error) {
 }
 
 func (c DockerConnection) validateImage(imageName string, incremental bool) (bool, error) {
+	log.Printf("Validating image %s, incremental: %t\n", imageName, incremental)
 	image, err := c.checkAndPull(imageName)
 
 	if err != nil {
@@ -60,6 +62,7 @@ func (c DockerConnection) validateImage(imageName string, incremental bool) (boo
 	}
 
 	if c.hasEntryPoint(image) {
+		log.Printf("ERROR: Image %s has a configured entrypoint and is incompatible with sti\n", imageName)
 		return false, nil
 	}
 
@@ -87,6 +90,7 @@ func (c DockerConnection) validateRequiredFiles(imageName string, files []string
 
 	for _, file := range files {
 		if !c.fileExistsInContainer(container.ID, file) {
+			log.Printf("ERROR: Image %s is missing %s\n", imageName, file)
 			return false, nil
 		}
 	}
@@ -97,6 +101,8 @@ func (c DockerConnection) validateRequiredFiles(imageName string, files []string
 func (res *ValidateResult) recordValidation(what string, image string, valid bool) {
 	if !valid {
 		res.Valid = false
-		res.Errors = append(res.Errors, fmt.Sprintf("%s %s failed validation", what, image))
+		res.Messages = append(res.Messages, fmt.Sprintf("%s %s failed validation", what, image))
+	} else {
+		res.Messages = append(res.Messages, fmt.Sprintf("%s %s passes validation", what, image))
 	}
 }

@@ -84,8 +84,16 @@ func Execute() {
 		Long:  "Validate an image and optional runtime image",
 		Run: func(cmd *cobra.Command, args []string) {
 			buildReq.BaseImage = args[0]
-			fmt.Printf("%+v\n", *validateReq.Request)
-			fmt.Println(sti.Validate(validateReq))
+			res, err := sti.Validate(validateReq)
+
+			if err != nil {
+				fmt.Printf("An error occured: %s", err.Error())
+				return
+			}
+
+			for _, message := range res.Messages {
+				fmt.Println(message)
+			}
 		},
 	}
 	validateCmd.Flags().StringVarP(&(req.RuntimeImage), "runtime-image", "R", "", "Set the runtime image to use")
