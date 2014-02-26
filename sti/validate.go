@@ -1,7 +1,12 @@
 package sti
 
+import (
+	"fmt"
+	"github.com/fsouza/go-dockerclient"
+)
+
 type ValidateRequest struct {
-	Request
+	*Request
 	Incremental bool
 }
 
@@ -10,9 +15,9 @@ type ValidateResult struct {
 	Errors []string
 }
 
-func Validate(req ValidateRequest) (ValidateResult, error) {
-	connection, err := newConnection(req)
-	result := ValidateResult{Valid: true}
+func Validate(req ValidateRequest) (*ValidateResult, error) {
+	c, err := newConnection(req.Request)
+	result := &ValidateResult{Valid: true}
 
 	if err != nil {
 		return nil, err
@@ -25,7 +30,7 @@ func Validate(req ValidateRequest) (ValidateResult, error) {
 			return nil, err
 		}
 
-		&result.recordValidation("Base image", req.BaseImage, valid)
+		result.recordValidation("Base image", req.BaseImage, valid)
 
 		valid, err = c.validateImage(req.RuntimeImage, true)
 
@@ -33,7 +38,7 @@ func Validate(req ValidateRequest) (ValidateResult, error) {
 			return nil, err
 		}
 
-		&result.recordValidation("Runtime image", req.RuntimeImage, valid)
+		result.recordValidation("Runtime image", req.RuntimeImage, valid)
 	} else {
 		valid, err := c.validateImage(req.BaseImage, req.Incremental)
 
@@ -41,7 +46,7 @@ func Validate(req ValidateRequest) (ValidateResult, error) {
 			return nil, err
 		}
 
-		&result.recordValidation("Base image", req.BaseImage, valid)
+		result.recordValidation("Base image", req.BaseImage, valid)
 	}
 
 	return result, nil
@@ -67,18 +72,18 @@ func (c DockerConnection) validateImage(imageName string, incremental bool) (boo
 	valid, err := c.validateRequiredFiles(imageName, files)
 
 	if err != nil {
-		return nil, err
+		return false, err
 	}
 
 	return valid, nil
 }
 
 func (c DockerConnection) validateRequiredFiles(imageName string, files []string) (bool, error) {
-	container, err = c.containerFromImage(imageName)
+	container, err := c.containerFromImage(imageName)
 	if err != nil {
-		return false, CreateContainerFailed
+		return false, ErrCreateContainerFailed
 	}
-	defer c.dockerClient.RemoveContainer(docker.RemoveContainersOptions{container.ID, true})
+	defer c.dockerClient.RemoveContainer(docker.RemoveContainerOptions{container.ID, true})
 
 	for _, file := range files {
 		if !c.fileExistsInContainer(container.ID, file) {
@@ -89,7 +94,7 @@ func (c DockerConnection) validateRequiredFiles(imageName string, files []string
 	return true, nil
 }
 
-func (res *ValidationResult) recordValidation(what string, image string, valid bool) {
+func (res *ValidateResult) recordValidation(what string, image string, valid bool) {
 	if !valid {
 		res.Valid = false
 		res.Errors = append(res.Errors, fmt.Sprintf("%s %s failed validation", what, image))

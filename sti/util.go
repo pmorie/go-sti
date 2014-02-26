@@ -3,12 +3,13 @@ package sti
 import (
 	"archive/tar"
 	"io"
+	"io/ioutil"
 	"os"
+	"os/exec"
 	"path/filepath"
-	"strings"
 )
 
-func writeTar(path string, tw *tar.Writer, fi os.FileInfo) error {
+func writeTar(tw *tar.Writer, path string, fi os.FileInfo) error {
 	fr, err := os.Open(path)
 	if err != nil {
 		return err
@@ -30,39 +31,8 @@ func writeTar(path string, tw *tar.Writer, fi os.FileInfo) error {
 	return err
 }
 
-func addDirectory(dirPath string, tw *tar.Writer) error {
-	dir, err := os.Open(dirPath)
-	if err != nil {
-		return err
-	}
-	defer dir.Close()
-
-	files, err := dir.Readdir(0)
-	if err != nil {
-		return err
-	}
-
-	for _, fi := range files {
-		curPath := filepath.Join(dirPath, fi.Name())
-
-		if fi.IsDir() {
-			err = addDirectory(curPath, tw)
-			if err != nil {
-				return err
-			}
-		} else {
-			err = writeTar(curPath, tw, fi)
-			if err != nil {
-				return err
-			}
-		}
-	}
-
-	return nil
-}
-
-func tarDirectory(dir string) (os.File, error) {
-	fw, err := ioutil.TempDir("", "sti-tar")
+func tarDirectory(dir string) (*os.File, error) {
+	fw, err := ioutil.TempFile("", "sti-tar")
 	if err != nil {
 		return nil, err
 	}
@@ -71,7 +41,29 @@ func tarDirectory(dir string) (os.File, error) {
 	tw := tar.NewWriter(fw)
 	defer tw.Close()
 
-	addDirectory(dir, tw)
+	err = filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+		if !info.IsDir() {
+			err = writeTar(tw, path, info)
+			if err != nil {
+				return err
+			}
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		return nil, err
+	}
 
 	return fw, nil
+}
+
+func copy(sourcePath string, targetPath string) error {
+	cmd := exec.Command("cp", "-ad", sourcePath, targetPath)
+	return cmd.Run()
+}
+
+func gitCheckout(source string, targetPath string) error {
+	return nil
 }

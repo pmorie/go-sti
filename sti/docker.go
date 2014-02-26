@@ -1,5 +1,10 @@
 package sti
 
+import (
+	"github.com/fsouza/go-dockerclient"
+	"io/ioutil"
+)
+
 type Configuration struct {
 	DockerSocket  string
 	DockerTimeout int
@@ -17,14 +22,14 @@ type DockerConnection struct {
 	dockerClient *docker.Client
 }
 
-func newConnection(req Request) (DockerConnection, error) {
+func newConnection(req *Request) (*DockerConnection, error) {
 	dockerClient, err := docker.NewClient(req.DockerSocket)
 
 	if err != nil {
-		return nil, DockerConnectionFailure
+		return nil, ErrDockerConnectionFailed
 	}
 
-	return DockerConnection{dockerClient}, nil
+	return &DockerConnection{dockerClient}, nil
 }
 
 func (c DockerConnection) isImageInLocalRegistry(imageName string) (bool, error) {
@@ -39,25 +44,26 @@ func (c DockerConnection) isImageInLocalRegistry(imageName string) (bool, error)
 	return false, err
 }
 
-func (c DockerConnection) containerFromImage(imageName string) (docker.Container, error) {
+func (c DockerConnection) containerFromImage(imageName string) (*docker.Container, error) {
 	// TODO: set command?
-	config := docker.Config{Image: imageName, AttachStdout: false, AttachStdout: false}
+	config := docker.Config{Image: imageName, AttachStdout: false, AttachStderr: false}
 	container, err := c.dockerClient.CreateContainer(docker.CreateContainerOptions{Name: "", Config: &config})
-
 	if err != nil {
 		return nil, err
 	}
 
 	err = c.dockerClient.StartContainer(container.ID, &docker.HostConfig{})
-
 	if err != nil {
 		return nil, err
 	}
 
 	exitCode, err := c.dockerClient.WaitContainer(container.ID)
-
 	if err != nil {
 		return nil, err
+	}
+
+	if exitCode != 0 {
+		return nil, ErrCreateContainerFailed
 	}
 
 	return container, nil
@@ -65,16 +71,19 @@ func (c DockerConnection) containerFromImage(imageName string) (docker.Container
 
 func (c DockerConnection) checkAndPull(imageName string) (*docker.Image, error) {
 	image, err := c.dockerClient.InspectImage(imageName)
-
 	if err != nil {
-		return nil, PullImageFailed
+		return nil, ErrPullImageFailed
 	}
 
 	if image == nil {
-		image, err = c.dockerClient.PullImage(imageName)
-
+		err = c.dockerClient.PullImage(docker.PullImageOptions{Repository: imageName}, docker.AuthConfiguration{})
 		if err != nil {
-			return nil, PullImageFailed
+			return nil, ErrPullImageFailed
+		}
+
+		image, err = c.dockerClient.InspectImage(imageName)
+		if err != nil {
+			return nil, err
 		}
 	}
 

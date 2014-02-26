@@ -1,10 +1,11 @@
 package cmd
 
 import (
-	_ "fmt"
+	"fmt"
 	"github.com/pmorie/go-sti/sti"
 	"github.com/smarterclayton/cobra"
 	"io/ioutil"
+	"os"
 	"strings"
 )
 
@@ -31,8 +32,8 @@ func Execute() {
 		envString string
 	)
 
-	buildReq := sti.BuildRequest{Request: req}
-	validateReq := sti.ValidateRequest{Request: req}
+	buildReq := sti.BuildRequest{Request: &req}
+	validateReq := sti.ValidateRequest{Request: &req}
 
 	stiCmd := &cobra.Command{
 		Use:   "sti",
@@ -59,7 +60,12 @@ func Execute() {
 			buildReq.Environment = envs
 
 			if buildReq.WorkingDir == "tempdir" {
+				var err error
 				buildReq.WorkingDir, err = ioutil.TempDir("", "sti")
+				if err != nil {
+					fmt.Println(err.Error())
+					return
+				}
 				defer os.Remove(buildReq.WorkingDir)
 			}
 
@@ -77,7 +83,9 @@ func Execute() {
 		Short: "Validate an image",
 		Long:  "Validate an image and optional runtime image",
 		Run: func(cmd *cobra.Command, args []string) {
-			sti.Validate(validateReq)
+			buildReq.BaseImage = args[0]
+			fmt.Printf("%+v\n", *validateReq.Request)
+			fmt.Println(sti.Validate(validateReq))
 		},
 	}
 	validateCmd.Flags().StringVarP(&(req.RuntimeImage), "runtime-image", "R", "", "Set the runtime image to use")
