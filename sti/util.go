@@ -74,6 +74,10 @@ func gitClone(source string, targetPath string) error {
 	return err
 }
 
+func imageHasEntryPoint(image *docker.Image) bool {
+	return image.Config.Entrypoint != nil
+}
+
 func FileExistsInContainer(dockerClient *docker.Client, cId string, path string) bool {
 	var buf []byte
 	writer := bytes.NewBuffer(buf)

@@ -6,18 +6,31 @@ import (
 	"log"
 )
 
+// Describes a request to validate an images for use in an sti build.
 type ValidateRequest struct {
 	*Request
 	Incremental bool
 }
 
+// Describes the result of a validation.
 type ValidateResult struct {
 	Valid    bool
 	Messages []string
 }
 
+// Records the result of a validation on a ValidationResult.
+func (res *ValidateResult) recordValidation(what string, image string, valid bool) {
+	if !valid {
+		res.Valid = false
+		res.Messages = append(res.Messages, fmt.Sprintf("%s %s failed validation", what, image))
+	} else {
+		res.Messages = append(res.Messages, fmt.Sprintf("%s %s passes validation", what, image))
+	}
+}
+
+// Service the supplied ValidateRequest and return a ValidateResult.
 func Validate(req ValidateRequest) (*ValidateResult, error) {
-	c, err := newConnection(req.Request)
+	c, err := newHandler(req.Request)
 	result := &ValidateResult{Valid: true}
 
 	if err != nil {
@@ -53,7 +66,7 @@ func Validate(req ValidateRequest) (*ValidateResult, error) {
 	return result, nil
 }
 
-func (c DockerConnection) validateImage(imageName string, incremental bool) (bool, error) {
+func (c requestHandler) validateImage(imageName string, incremental bool) (bool, error) {
 	log.Printf("Validating image %s, incremental: %t\n", imageName, incremental)
 	image, err := c.checkAndPull(imageName)
 
@@ -61,7 +74,7 @@ func (c DockerConnection) validateImage(imageName string, incremental bool) (boo
 		return false, err
 	}
 
-	if c.hasEntryPoint(image) {
+	if imageHasEntryPoint(image) {
 		log.Printf("ERROR: Image %s has a configured entrypoint and is incompatible with sti\n", imageName)
 		return false, nil
 	}
@@ -81,7 +94,7 @@ func (c DockerConnection) validateImage(imageName string, incremental bool) (boo
 	return valid, nil
 }
 
-func (c DockerConnection) validateRequiredFiles(imageName string, files []string) (bool, error) {
+func (c requestHandler) validateRequiredFiles(imageName string, files []string) (bool, error) {
 	container, err := c.containerFromImage(imageName)
 	if err != nil {
 		return false, ErrCreateContainerFailed
@@ -98,13 +111,4 @@ func (c DockerConnection) validateRequiredFiles(imageName string, files []string
 	}
 
 	return true, nil
-}
-
-func (res *ValidateResult) recordValidation(what string, image string, valid bool) {
-	if !valid {
-		res.Valid = false
-		res.Messages = append(res.Messages, fmt.Sprintf("%s %s failed validation", what, image))
-	} else {
-		res.Messages = append(res.Messages, fmt.Sprintf("%s %s passes validation", what, image))
-	}
 }

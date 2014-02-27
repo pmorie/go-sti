@@ -5,6 +5,7 @@ import (
 	"log"
 )
 
+// Configuration specifies basic configuration parameters of the library.
 type Configuration struct {
 	DockerSocket  string
 	DockerTimeout int
@@ -12,28 +13,33 @@ type Configuration struct {
 	Debug         bool
 }
 
+// TODO: collapse with Request?
+
+// Request contains essential fields for any request: a Configuration, a base image, and an
+// optional runtime image.
 type Request struct {
 	Configuration
 	BaseImage    string
 	RuntimeImage string
 }
 
-type DockerConnection struct {
+// requestHandler encapsulates dependencies needed to fulfill requests.
+type requestHandler struct {
 	dockerClient *docker.Client
 	debug        bool
 }
 
-func newConnection(req *Request) (*DockerConnection, error) {
+func newHandler(req *Request) (*requestHandler, error) {
 	dockerClient, err := docker.NewClient(req.DockerSocket)
 
 	if err != nil {
 		return nil, ErrDockerConnectionFailed
 	}
 
-	return &DockerConnection{dockerClient, req.Debug}, nil
+	return &requestHandler{dockerClient, req.Debug}, nil
 }
 
-func (c DockerConnection) isImageInLocalRegistry(imageName string) (bool, error) {
+func (c requestHandler) isImageInLocalRegistry(imageName string) (bool, error) {
 	image, err := c.dockerClient.InspectImage(imageName)
 
 	if image != nil {
@@ -45,7 +51,7 @@ func (c DockerConnection) isImageInLocalRegistry(imageName string) (bool, error)
 	return false, err
 }
 
-func (c DockerConnection) containerFromImage(imageName string) (*docker.Container, error) {
+func (c requestHandler) containerFromImage(imageName string) (*docker.Container, error) {
 	config := docker.Config{Image: imageName, AttachStdout: false, AttachStderr: false, Cmd: []string{"/bin/true"}}
 	container, err := c.dockerClient.CreateContainer(docker.CreateContainerOptions{Name: "", Config: &config})
 	if err != nil {
@@ -70,7 +76,7 @@ func (c DockerConnection) containerFromImage(imageName string) (*docker.Containe
 	return container, nil
 }
 
-func (c DockerConnection) checkAndPull(imageName string) (*docker.Image, error) {
+func (c requestHandler) checkAndPull(imageName string) (*docker.Image, error) {
 	image, err := c.dockerClient.InspectImage(imageName)
 	if err != nil {
 		return nil, ErrPullImageFailed
@@ -95,8 +101,4 @@ func (c DockerConnection) checkAndPull(imageName string) (*docker.Image, error) 
 	}
 
 	return image, nil
-}
-
-func (c DockerConnection) hasEntryPoint(image *docker.Image) bool {
-	return image.Config.Entrypoint != nil
 }
