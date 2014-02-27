@@ -2,6 +2,8 @@ package sti
 
 import (
 	"archive/tar"
+	"bytes"
+	"github.com/fsouza/go-dockerclient"
 	"io"
 	"io/ioutil"
 	"os"
@@ -70,4 +72,14 @@ func gitClone(source string, targetPath string) error {
 	err := cmd.Run()
 
 	return err
+}
+
+func FileExistsInContainer(dockerClient *docker.Client, cId string, path string) bool {
+	var buf []byte
+	writer := bytes.NewBuffer(buf)
+
+	err := dockerClient.CopyFromContainer(docker.CopyFromContainerOptions{writer, cId, path})
+	content := writer.String()
+
+	return ((err == nil) && ("" != content))
 }

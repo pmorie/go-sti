@@ -89,7 +89,7 @@ func (c DockerConnection) validateRequiredFiles(imageName string, files []string
 	defer c.dockerClient.RemoveContainer(docker.RemoveContainerOptions{container.ID, true})
 
 	for _, file := range files {
-		if !c.fileExistsInContainer(container.ID, file) {
+		if !FileExistsInContainer(c.dockerClient, container.ID, file) {
 			log.Printf("ERROR: Image %s is missing %s\n", imageName, file)
 			return false, nil
 		} else if c.debug {

@@ -10,8 +10,6 @@ import (
 	"testing"
 )
 
-const dockerSocket = "unix:///var/run/docker.sock"
-
 // Register gocheck with the 'testing' runner
 func Test(t *testing.T) { TestingT(t) }
 
@@ -20,10 +18,20 @@ type IntegrationTestSuite struct {
 	tempDir      string
 }
 
-var integration = flag.Bool("integration", false, "Include integration tests")
-
 // Register IntegrationTestSuite with the gocheck suite manager
 var _ = Suite(&IntegrationTestSuite{})
+
+const (
+	DockerSocket        = "unix:///var/run/docker.sock"
+	TestSource          = "git://github.com/pmorie/simple-html"
+	FakeBaseImage       = "pmorie/sti-fake"
+	TagCleanBuild       = "sti/test-fake-app"
+	TagIncrementalBuild = "sti/test-incremental-app"
+)
+
+// Add support for 'go test' flags, viz: go test -integration -extended
+var integration = flag.Bool("integration", false, "Include integration tests")
+var extended = flag.Bool("extended", false, "Include long-running tests")
 
 // Suite/Test fixtures are provided by gocheck
 func (s *IntegrationTestSuite) SetUpSuite(c *C) {
@@ -31,7 +39,7 @@ func (s *IntegrationTestSuite) SetUpSuite(c *C) {
 		c.Skip("-integration not provided")
 	}
 
-	s.dockerClient, _ = docker.NewClient(dockerSocket)
+	s.dockerClient, _ = docker.NewClient(DockerSocket)
 	s.tempDir, _ = ioutil.TempDir("", "go-sti-integration")
 }
 
@@ -40,20 +48,19 @@ func (s *IntegrationTestSuite) SetUpTest(c *C) {
 }
 
 // TestXxxx methods are identified as test cases
-func (s *IntegrationTestSuite) TestCleanBuild(c *C) {
-	tag := "sti/test-fake-app"
-	gitRepo := "git://github.com/pmorie/simple-html"
-	baseImage := "pmorie/sti-fake"
 
+// Test a clean build.  The simplest case.
+func (s *IntegrationTestSuite) TestCleanBuild(c *C) {
+	tag := TagCleanBuild
 	req := sti.BuildRequest{
 		Request: &sti.Request{
 			Configuration: sti.Configuration{
 				WorkingDir:   s.tempDir,
-				DockerSocket: dockerSocket,
+				DockerSocket: DockerSocket,
 				Debug:        true},
-			BaseImage: baseImage},
+			BaseImage: FakeBaseImage},
 		Clean:  true,
-		Source: gitRepo,
+		Source: TestSource,
 		Tag:    tag,
 		Writer: os.Stdout}
 	resp, err := sti.Build(req)
@@ -61,7 +68,39 @@ func (s *IntegrationTestSuite) TestCleanBuild(c *C) {
 	c.Assert(resp.Success, Equals, true, Commentf("Sti build failed"))
 
 	s.checkForImage(c, tag)
+	containerId := s.createContainer(c, tag)
+	defer s.removeContainer(containerId)
+	s.checkBasicBuildState(c, containerId)
+}
 
+// Test an incremental build.
+func (s *IntegrationTestSuite) TestIncrementalBuild(c *C) {
+	if !*extended {
+		c.Skip("-extended not provided")
+	}
+
+	tag := TagIncrementalBuild
+	req := sti.BuildRequest{
+		Request: &sti.Request{
+			Configuration: sti.Configuration{
+				WorkingDir:   s.tempDir,
+				DockerSocket: DockerSocket,
+				Debug:        true},
+			BaseImage: FakeBaseImage},
+		Clean:  true,
+		Source: TestSource,
+		Tag:    tag,
+		Writer: os.Stdout}
+	resp, err := sti.Build(req)
+	c.Assert(err, IsNil, Commentf("Sti build failed"))
+	c.Assert(resp.Success, Equals, true, Commentf("Sti build failed"))
+
+	req.Clean = false
+	resp, err = sti.Build(req)
+	c.Assert(err, IsNil, Commentf("Sti build failed"))
+	c.Assert(resp.Success, Equals, true, Commentf("Sti build failed"))
+
+	s.checkForImage(c, tag)
 	containerId := s.createContainer(c, tag)
 	defer s.removeContainer(containerId)
 	s.checkBasicBuildState(c, containerId)
@@ -91,9 +130,9 @@ func (s *IntegrationTestSuite) removeContainer(cId string) {
 }
 
 func (s *IntegrationTestSuite) checkFileExists(c *C, cId string, filePath string) {
-	err := s.dockerClient.CopyFromContainer(docker.CopyFromContainerOptions{ioutil.Discard, cId, filePath})
+	res := sti.FileExistsInContainer(s.dockerClient, cId, filePath)
 
-	c.Assert(err, IsNil, Commentf("Couldn't find file %s in container %s", filePath, cId))
+	c.Assert(res, Equals, true, Commentf("Couldn't find file %s in container %s", filePath, cId))
 }
 
 func (s *IntegrationTestSuite) checkBasicBuildState(c *C, cId string) {
