@@ -31,35 +31,29 @@ func (res *ValidateResult) recordValidation(what string, image string, valid boo
 // Service the supplied ValidateRequest and return a ValidateResult.
 func Validate(req ValidateRequest) (*ValidateResult, error) {
 	c, err := newHandler(req.Request)
-	result := &ValidateResult{Valid: true}
-
 	if err != nil {
 		return nil, err
 	}
 
+	result := &ValidateResult{Valid: true}
+
 	if req.RuntimeImage != "" {
 		valid, err := c.validateImage(req.BaseImage, false)
-
 		if err != nil {
 			return nil, err
 		}
-
 		result.recordValidation("Base image", req.BaseImage, valid)
 
 		valid, err = c.validateImage(req.RuntimeImage, true)
-
 		if err != nil {
 			return nil, err
 		}
-
 		result.recordValidation("Runtime image", req.RuntimeImage, valid)
 	} else {
 		valid, err := c.validateImage(req.BaseImage, req.Incremental)
-
 		if err != nil {
 			return nil, err
 		}
-
 		result.recordValidation("Base image", req.BaseImage, valid)
 	}
 
@@ -69,7 +63,6 @@ func Validate(req ValidateRequest) (*ValidateResult, error) {
 func (c requestHandler) validateImage(imageName string, incremental bool) (bool, error) {
 	log.Printf("Validating image %s, incremental: %t\n", imageName, incremental)
 	image, err := c.checkAndPull(imageName)
-
 	if err != nil {
 		return false, err
 	}
@@ -86,7 +79,6 @@ func (c requestHandler) validateImage(imageName string, incremental bool) (bool,
 	}
 
 	valid, err := c.validateRequiredFiles(imageName, files)
-
 	if err != nil {
 		return false, err
 	}
