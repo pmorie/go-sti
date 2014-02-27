@@ -10,7 +10,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
-	"syscall"
 	"text/template"
 )
 
@@ -34,7 +33,7 @@ type BuildResult struct {
 }
 
 func Build(req BuildRequest) (*BuildResult, error) {
-	c, err := newHandler(req.Request)
+	h, err := newHandler(req.Request)
 	if err != nil {
 		return nil, err
 	}
@@ -42,21 +41,23 @@ func Build(req BuildRequest) (*BuildResult, error) {
 	incremental := !req.Clean
 
 	if incremental {
-		exists, err := c.isImageInLocalRegistry(req.Tag)
+		exists, err := h.isImageInLocalRegistry(req.Tag)
 
 		if err != nil {
 			return nil, err
 		}
 
 		if exists {
-			incremental, err = c.detectIncrementalBuild(req.Tag)
+			incremental, err = h.detectIncrementalBuild(req.Tag)
 			if err != nil {
 				return nil, err
 			}
+		} else {
+			incremental = false
 		}
 	}
 
-	if c.debug {
+	if h.debug {
 		if incremental {
 			log.Printf("Existing image for tag %s detected for incremental build\n", req.Tag)
 		} else {
@@ -67,26 +68,30 @@ func Build(req BuildRequest) (*BuildResult, error) {
 	var result *BuildResult
 
 	if req.RuntimeImage == "" {
-		result, err = c.build(req, incremental)
+		result, err = h.build(req, incremental)
 	} else {
-		result, err = c.extendedBuild(req, incremental)
+		result, err = h.extendedBuild(req, incremental)
 	}
 
 	return result, err
 }
 
-func (c requestHandler) detectIncrementalBuild(tag string) (bool, error) {
-	container, err := c.containerFromImage(tag)
+func (h requestHandler) detectIncrementalBuild(tag string) (bool, error) {
+	if h.debug {
+		log.Printf("Determining where image %s is compatible with incremental build", tag)
+	}
+
+	container, err := h.containerFromImage(tag)
 	if err != nil {
 		return false, err
 	}
-	defer c.dockerClient.RemoveContainer(docker.RemoveContainerOptions{container.ID, true})
+	defer h.dockerClient.RemoveContainer(docker.RemoveContainerOptions{container.ID, true})
 
-	return FileExistsInContainer(c.dockerClient, container.ID, "/usr/bin/save-artifacts"), nil
+	return FileExistsInContainer(h.dockerClient, container.ID, "/usr/bin/save-artifacts"), nil
 }
 
-func (c requestHandler) build(req BuildRequest, incremental bool) (*BuildResult, error) {
-	if c.debug {
+func (h requestHandler) build(req BuildRequest, incremental bool) (*BuildResult, error) {
+	if h.debug {
 		log.Printf("Performing source build from %s\n", req.Source)
 	}
 	if incremental {
@@ -96,27 +101,27 @@ func (c requestHandler) build(req BuildRequest, incremental bool) (*BuildResult,
 			return nil, err
 		}
 
-		err = c.saveArtifacts(req.Tag, artifactTmpDir)
+		err = h.saveArtifacts(req.Tag, artifactTmpDir)
 		if err != nil {
 			return nil, err
 		}
 	}
 
 	targetSourceDir := filepath.Join(req.WorkingDir, "src")
-	err := c.prepareSourceDir(req.Source, targetSourceDir)
+	err := h.prepareSourceDir(req.Source, targetSourceDir)
 	if err != nil {
 		return nil, err
 	}
 
-	return c.buildDeployableImage(req, req.WorkingDir, incremental)
+	return h.buildDeployableImage(req, req.WorkingDir, incremental)
 }
 
-func (c requestHandler) extendedBuild(req BuildRequest, incremental bool) (*BuildResult, error) {
+func (h requestHandler) extendedBuild(req BuildRequest, incremental bool) (*BuildResult, error) {
 	return nil, nil
 }
 
-func (c requestHandler) saveArtifacts(image string, path string) error {
-	if c.debug {
+func (h requestHandler) saveArtifacts(image string, path string) error {
+	if h.debug {
 		log.Printf("Saving build artifacts from image %s to path %s\n", image, path)
 	}
 
@@ -125,15 +130,15 @@ func (c requestHandler) saveArtifacts(image string, path string) error {
 	volumeMap["/usr/artifacts"] = *new(struct{})
 
 	config := docker.Config{Image: image, Cmd: []string{"/usr/bin/save-artifacts"}, Volumes: volumeMap}
-	container, err := c.dockerClient.CreateContainer(docker.CreateContainerOptions{Name: "", Config: &config})
+	container, err := h.dockerClient.CreateContainer(docker.CreateContainerOptions{Name: "", Config: &config})
 
 	if err != nil {
 		return err
 	}
 
 	hostConfig := docker.HostConfig{Binds: []string{path + ":/usr/artifacts"}}
-	err = c.dockerClient.StartContainer(container.ID, &hostConfig)
-	exitCode, err := c.dockerClient.WaitContainer(container.ID)
+	err = h.dockerClient.StartContainer(container.ID, &hostConfig)
+	exitCode, err := h.dockerClient.WaitContainer(container.ID)
 
 	if err != nil {
 		return err
@@ -146,11 +151,11 @@ func (c requestHandler) saveArtifacts(image string, path string) error {
 	return nil
 }
 
-func (c requestHandler) prepareSourceDir(source string, targetSourceDir string) error {
+func (h requestHandler) prepareSourceDir(source string, targetSourceDir string) error {
 	re := regexp.MustCompile("^git://")
 
 	if re.MatchString(source) {
-		if c.debug {
+		if h.debug {
 			log.Printf("Fetching %s to directory %s", source, targetSourceDir)
 		}
 		err := gitClone(source, targetSourceDir)
@@ -173,7 +178,7 @@ var dockerFileTemplate = template.Must(template.New("Dockerfile").Parse("" +
 	"RUN /usr/bin/prepare\n" +
 	"CMD /usr/bin/run\n"))
 
-func (c requestHandler) buildDeployableImage(req BuildRequest, contextDir string, incremental bool) (*BuildResult, error) {
+func (h requestHandler) buildDeployableImage(req BuildRequest, contextDir string, incremental bool) (*BuildResult, error) {
 	dockerFilePath := filepath.Join(contextDir, "Dockerfile")
 	dockerFile, err := openFileExclusive(dockerFilePath, 0700)
 	if err != nil {
@@ -191,7 +196,7 @@ func (c requestHandler) buildDeployableImage(req BuildRequest, contextDir string
 		return nil, ErrCreateDockerfileFailed
 	}
 
-	if c.debug {
+	if h.debug {
 		log.Printf("Wrote Dockerfile for build to %s\n", dockerFilePath)
 	}
 
@@ -200,7 +205,7 @@ func (c requestHandler) buildDeployableImage(req BuildRequest, contextDir string
 		return nil, err
 	}
 
-	if c.debug {
+	if h.debug {
 		log.Printf("Created tarball for %s at %s\n", contextDir, tarBall.Name())
 	}
 
@@ -213,11 +218,11 @@ func (c requestHandler) buildDeployableImage(req BuildRequest, contextDir string
 	var output []string
 
 	if req.Writer != nil {
-		err = c.dockerClient.BuildImage(docker.BuildImageOptions{req.Tag, false, false, true, tarReader, req.Writer, ""})
+		err = h.dockerClient.BuildImage(docker.BuildImageOptions{req.Tag, false, false, true, tarReader, req.Writer, ""})
 	} else {
 		var buf []byte
 		writer := bytes.NewBuffer(buf)
-		err = c.dockerClient.BuildImage(docker.BuildImageOptions{req.Tag, false, false, true, tarReader, writer, ""})
+		err = h.dockerClient.BuildImage(docker.BuildImageOptions{req.Tag, false, false, true, tarReader, writer, ""})
 		rawOutput := writer.String()
 		output = strings.Split(rawOutput, "\n")
 	}
@@ -227,21 +232,4 @@ func (c requestHandler) buildDeployableImage(req BuildRequest, contextDir string
 	}
 
 	return &BuildResult{true, output}, nil
-}
-
-func openFileExclusive(path string, mode os.FileMode) (*os.File, error) {
-	file, errf := os.OpenFile(path, os.O_CREATE|os.O_RDWR, mode)
-	if errf != nil {
-		return nil, errf
-	}
-
-	if errl := syscall.Flock(int(file.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); errl != nil {
-		if errl == syscall.EWOULDBLOCK {
-			return nil, ErrCreateDockerfileFailed
-		}
-
-		return nil, errl
-	}
-
-	return file, nil
 }

@@ -39,8 +39,8 @@ func newHandler(req *Request) (*requestHandler, error) {
 	return &requestHandler{dockerClient, req.Debug}, nil
 }
 
-func (c requestHandler) isImageInLocalRegistry(imageName string) (bool, error) {
-	image, err := c.dockerClient.InspectImage(imageName)
+func (h requestHandler) isImageInLocalRegistry(imageName string) (bool, error) {
+	image, err := h.dockerClient.InspectImage(imageName)
 
 	if image != nil {
 		return true, nil
@@ -51,19 +51,19 @@ func (c requestHandler) isImageInLocalRegistry(imageName string) (bool, error) {
 	return false, err
 }
 
-func (c requestHandler) containerFromImage(imageName string) (*docker.Container, error) {
+func (h requestHandler) containerFromImage(imageName string) (*docker.Container, error) {
 	config := docker.Config{Image: imageName, AttachStdout: false, AttachStderr: false, Cmd: []string{"/bin/true"}}
-	container, err := c.dockerClient.CreateContainer(docker.CreateContainerOptions{Name: "", Config: &config})
+	container, err := h.dockerClient.CreateContainer(docker.CreateContainerOptions{Name: "", Config: &config})
 	if err != nil {
 		return nil, err
 	}
 
-	err = c.dockerClient.StartContainer(container.ID, &docker.HostConfig{})
+	err = h.dockerClient.StartContainer(container.ID, &docker.HostConfig{})
 	if err != nil {
 		return nil, err
 	}
 
-	exitCode, err := c.dockerClient.WaitContainer(container.ID)
+	exitCode, err := h.dockerClient.WaitContainer(container.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -76,27 +76,27 @@ func (c requestHandler) containerFromImage(imageName string) (*docker.Container,
 	return container, nil
 }
 
-func (c requestHandler) checkAndPull(imageName string) (*docker.Image, error) {
-	image, err := c.dockerClient.InspectImage(imageName)
+func (h requestHandler) checkAndPull(imageName string) (*docker.Image, error) {
+	image, err := h.dockerClient.InspectImage(imageName)
 	if err != nil {
 		return nil, ErrPullImageFailed
 	}
 
 	if image == nil {
-		if c.debug {
+		if h.debug {
 			log.Printf("Pulling image %s\n", imageName)
 		}
 
-		err = c.dockerClient.PullImage(docker.PullImageOptions{Repository: imageName}, docker.AuthConfiguration{})
+		err = h.dockerClient.PullImage(docker.PullImageOptions{Repository: imageName}, docker.AuthConfiguration{})
 		if err != nil {
 			return nil, ErrPullImageFailed
 		}
 
-		image, err = c.dockerClient.InspectImage(imageName)
+		image, err = h.dockerClient.InspectImage(imageName)
 		if err != nil {
 			return nil, err
 		}
-	} else if c.debug {
+	} else if h.debug {
 		log.Printf("Image %s available locally\n", imageName)
 	}
 

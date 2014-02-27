@@ -10,7 +10,19 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 )
+
+// Determine whether a file exists in a container.
+func FileExistsInContainer(dockerClient *docker.Client, cId string, path string) bool {
+	var buf []byte
+	writer := bytes.NewBuffer(buf)
+
+	err := dockerClient.CopyFromContainer(docker.CopyFromContainerOptions{writer, cId, path})
+	content := writer.String()
+
+	return ((err == nil) && ("" != content))
+}
 
 func writeTar(tw *tar.Writer, path string, relative string, fi os.FileInfo) error {
 	fr, err := os.Open(path)
@@ -78,12 +90,19 @@ func imageHasEntryPoint(image *docker.Image) bool {
 	return image.Config.Entrypoint != nil
 }
 
-func FileExistsInContainer(dockerClient *docker.Client, cId string, path string) bool {
-	var buf []byte
-	writer := bytes.NewBuffer(buf)
+func openFileExclusive(path string, mode os.FileMode) (*os.File, error) {
+	file, errf := os.OpenFile(path, os.O_CREATE|os.O_RDWR, mode)
+	if errf != nil {
+		return nil, errf
+	}
 
-	err := dockerClient.CopyFromContainer(docker.CopyFromContainerOptions{writer, cId, path})
-	content := writer.String()
+	if errl := syscall.Flock(int(file.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); errl != nil {
+		if errl == syscall.EWOULDBLOCK {
+			return nil, ErrCreateDockerfileFailed
+		}
 
-	return ((err == nil) && ("" != content))
+		return nil, errl
+	}
+
+	return file, nil
 }
