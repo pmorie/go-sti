@@ -25,6 +25,7 @@ const (
 	DockerSocket        = "unix:///var/run/docker.sock"
 	TestSource          = "git://github.com/pmorie/simple-html"
 	FakeBaseImage       = "pmorie/sti-fake"
+	BrokenBaseImage     = "pmorie/sti-fake-broken"
 	TagCleanBuild       = "sti/test-fake-app"
 	TagIncrementalBuild = "sti/test-incremental-app"
 )
@@ -48,6 +49,53 @@ func (s *IntegrationTestSuite) SetUpTest(c *C) {
 }
 
 // TestXxxx methods are identified as test cases
+func (s *IntegrationTestSuite) TestValidateSuccess(c *C) {
+	req := sti.ValidateRequest{
+		Request: &sti.Request{
+			Configuration: sti.Configuration{
+				WorkingDir:   s.tempDir,
+				DockerSocket: DockerSocket,
+				Debug:        true},
+			BaseImage: FakeBaseImage,
+		},
+		Incremental: false,
+	}
+	resp, err := sti.Validate(req)
+	c.Assert(err, IsNil, Commentf("Validation failed: err"))
+	c.Assert(resp.Valid, Equals, true, Commentf("Validation failed: invalid response"))
+}
+
+func (s *IntegrationTestSuite) TestValidateFailure(c *C) {
+	req := sti.ValidateRequest{
+		Request: &sti.Request{
+			Configuration: sti.Configuration{
+				WorkingDir:   s.tempDir,
+				DockerSocket: DockerSocket,
+				Debug:        true},
+			BaseImage: BrokenBaseImage,
+		},
+		Incremental: false,
+	}
+	resp, err := sti.Validate(req)
+	c.Assert(err, IsNil, Commentf("Validation failed: err"))
+	c.Assert(resp.Valid, Equals, false, Commentf("Validation should have failed: invalid response"))
+}
+
+func (s *IntegrationTestSuite) TestValidateIncrementalSuccess(c *C) {
+	req := sti.ValidateRequest{
+		Request: &sti.Request{
+			Configuration: sti.Configuration{
+				WorkingDir:   s.tempDir,
+				DockerSocket: DockerSocket,
+				Debug:        true},
+			BaseImage:    FakeBaseImage,
+			RuntimeImage: FakeBaseImage,
+		},
+	}
+	resp, err := sti.Validate(req)
+	c.Assert(err, IsNil, Commentf("Validation failed: err"))
+	c.Assert(resp.Valid, Equals, true, Commentf("Validation failed: invalid response"))
+}
 
 // Test a clean build.  The simplest case.
 func (s *IntegrationTestSuite) TestCleanBuild(c *C) {
