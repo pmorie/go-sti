@@ -10,7 +10,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
-	"syscall"
 	"text/template"
 )
 
@@ -53,6 +52,8 @@ func Build(req BuildRequest) (*BuildResult, error) {
 			if err != nil {
 				return nil, err
 			}
+		} else {
+			incremental = false
 		}
 	}
 
@@ -76,6 +77,10 @@ func Build(req BuildRequest) (*BuildResult, error) {
 }
 
 func (h requestHandler) detectIncrementalBuild(tag string) (bool, error) {
+	if h.debug {
+		log.Printf("Determining where image %s is compatible with incremental build", tag)
+	}
+
 	container, err := h.containerFromImage(tag)
 	if err != nil {
 		return false, err
