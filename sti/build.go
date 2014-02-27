@@ -34,7 +34,7 @@ type BuildResult struct {
 }
 
 func Build(req BuildRequest) (*BuildResult, error) {
-	c, err := newConnection(req.Request)
+	c, err := newHandler(req.Request)
 	if err != nil {
 		return nil, err
 	}
@@ -75,7 +75,7 @@ func Build(req BuildRequest) (*BuildResult, error) {
 	return result, err
 }
 
-func (c DockerConnection) detectIncrementalBuild(tag string) (bool, error) {
+func (c requestHandler) detectIncrementalBuild(tag string) (bool, error) {
 	container, err := c.containerFromImage(tag)
 	if err != nil {
 		return false, err
@@ -85,7 +85,7 @@ func (c DockerConnection) detectIncrementalBuild(tag string) (bool, error) {
 	return FileExistsInContainer(c.dockerClient, container.ID, "/usr/bin/save-artifacts"), nil
 }
 
-func (c DockerConnection) build(req BuildRequest, incremental bool) (*BuildResult, error) {
+func (c requestHandler) build(req BuildRequest, incremental bool) (*BuildResult, error) {
 	if c.debug {
 		log.Printf("Performing source build from %s\n", req.Source)
 	}
@@ -111,11 +111,11 @@ func (c DockerConnection) build(req BuildRequest, incremental bool) (*BuildResul
 	return c.buildDeployableImage(req, req.WorkingDir, incremental)
 }
 
-func (c DockerConnection) extendedBuild(req BuildRequest, incremental bool) (*BuildResult, error) {
+func (c requestHandler) extendedBuild(req BuildRequest, incremental bool) (*BuildResult, error) {
 	return nil, nil
 }
 
-func (c DockerConnection) saveArtifacts(image string, path string) error {
+func (c requestHandler) saveArtifacts(image string, path string) error {
 	if c.debug {
 		log.Printf("Saving build artifacts from image %s to path %s\n", image, path)
 	}
@@ -146,7 +146,7 @@ func (c DockerConnection) saveArtifacts(image string, path string) error {
 	return nil
 }
 
-func (c DockerConnection) prepareSourceDir(source string, targetSourceDir string) error {
+func (c requestHandler) prepareSourceDir(source string, targetSourceDir string) error {
 	re := regexp.MustCompile("^git://")
 
 	if re.MatchString(source) {
@@ -173,7 +173,7 @@ var dockerFileTemplate = template.Must(template.New("Dockerfile").Parse("" +
 	"RUN /usr/bin/prepare\n" +
 	"CMD /usr/bin/run\n"))
 
-func (c DockerConnection) buildDeployableImage(req BuildRequest, contextDir string, incremental bool) (*BuildResult, error) {
+func (c requestHandler) buildDeployableImage(req BuildRequest, contextDir string, incremental bool) (*BuildResult, error) {
 	dockerFilePath := filepath.Join(contextDir, "Dockerfile")
 	dockerFile, err := openFileExclusive(dockerFilePath, 0700)
 	if err != nil {
