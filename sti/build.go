@@ -82,7 +82,7 @@ func (c DockerConnection) detectIncrementalBuild(tag string) (bool, error) {
 	}
 	defer c.dockerClient.RemoveContainer(docker.RemoveContainerOptions{container.ID, true})
 
-	return c.fileExistsInContainer(container.ID, "/usr/bin/save-artifacts"), nil
+	return FileExistsInContainer(c.dockerClient, container.ID, "/usr/bin/save-artifacts"), nil
 }
 
 func (c DockerConnection) build(req BuildRequest, incremental bool) (*BuildResult, error) {

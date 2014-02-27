@@ -1,7 +1,6 @@
 package sti
 
 import (
-	"bytes"
 	"github.com/fsouza/go-dockerclient"
 	"log"
 )
@@ -47,7 +46,6 @@ func (c DockerConnection) isImageInLocalRegistry(imageName string) (bool, error)
 }
 
 func (c DockerConnection) containerFromImage(imageName string) (*docker.Container, error) {
-	// TODO: set command?
 	config := docker.Config{Image: imageName, AttachStdout: false, AttachStderr: false, Cmd: []string{"/bin/true"}}
 	container, err := c.dockerClient.CreateContainer(docker.CreateContainerOptions{Name: "", Config: &config})
 	if err != nil {
@@ -101,18 +99,4 @@ func (c DockerConnection) checkAndPull(imageName string) (*docker.Image, error) 
 
 func (c DockerConnection) hasEntryPoint(image *docker.Image) bool {
 	return image.Config.Entrypoint != nil
-}
-
-func (c DockerConnection) fileExistsInContainer(cId string, path string) bool {
-	var buf []byte
-	writer := bytes.NewBuffer(buf)
-
-	err := c.dockerClient.CopyFromContainer(docker.CopyFromContainerOptions{writer, cId, path})
-	content := writer.String()
-
-	if c.debug {
-		log.Printf("File %s in container %s: {%s}\n", path, cId, content)
-	}
-
-	return ((err == nil) && ("" != content))
 }
