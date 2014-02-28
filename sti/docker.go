@@ -25,9 +25,11 @@ type requestHandler struct {
 }
 
 func newHandler(req Request) (*requestHandler, error) {
-	log.Printf("Using docker socket: %s\n", req.DockerSocket)
-	dockerClient, err := docker.NewClient(req.DockerSocket)
+	if req.Debug {
+		log.Printf("Using docker socket: %s\n", req.DockerSocket)
+	}
 
+	dockerClient, err := docker.NewClient(req.DockerSocket)
 	if err != nil {
 		return nil, ErrDockerConnectionFailed
 	}
@@ -101,4 +103,10 @@ func (h requestHandler) containerFromImage(imageName string) (*docker.Container,
 
 func (h requestHandler) removeContainer(id string) {
 	h.dockerClient.RemoveContainer(docker.RemoveContainerOptions{id, true})
+}
+
+func (h requestHandler) commitContainer(id, tag string) error {
+	// TODO: commit message / author?
+	_, err := h.dockerClient.CommitContainer(docker.CommitContainerOptions{Container: id, Repository: tag})
+	return err
 }

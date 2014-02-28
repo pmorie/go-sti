@@ -37,9 +37,10 @@ const (
 	FakeBuildImage      = "pmorie/sti-fake-builder"
 	FakeBrokenBaseImage = "pmorie/sti-fake-broken"
 
-	TagCleanBuild       = "test/sti-fake-app"
-	TagIncrementalBuild = "test/sti-incremental-app"
-	TagExtendedBuild    = "test/sti-extended-app"
+	TagCleanBuild               = "test/sti-fake-app"
+	TagIncrementalBuild         = "test/sti-incremental-app"
+	TagExtendedBuild            = "test/sti-extended-app"
+	TagIncrementalExtendedBuild = "test/sti-inc-ext-app"
 )
 
 // Suite/Test fixtures are provided by gocheck
@@ -49,11 +50,13 @@ func (s *IntegrationTestSuite) SetUpSuite(c *C) {
 	}
 
 	s.dockerClient, _ = docker.NewClient(DockerSocket)
-	s.tempDir, _ = ioutil.TempDir("/tmp", "go-sti-integration")
-
-	for _, image := range []string{TagCleanBuild, TagIncrementalBuild, TagExtendedBuild} {
+	for _, image := range []string{TagCleanBuild, TagIncrementalBuild, TagExtendedBuild, TagIncrementalExtendedBuild} {
 		s.dockerClient.RemoveImage(image)
 	}
+}
+
+func (s *IntegrationTestSuite) SetUpTest(c *C) {
+	s.tempDir, _ = ioutil.TempDir("/tmp", "go-sti-integration")
 }
 
 // TestXxxx methods are identified as test cases
@@ -182,7 +185,7 @@ func (s *IntegrationTestSuite) TestIncrementalBuild(c *C) {
 }
 
 // Test an extended build.
-func (s *IntegrationTestSuite) TestExtendedBuild(c *C) {
+func (s *IntegrationTestSuite) TestCleanExtendedBuild(c *C) {
 	tag := TagIncrementalBuild
 	req := sti.BuildRequest{
 		Request: sti.Request{
@@ -204,6 +207,44 @@ func (s *IntegrationTestSuite) TestExtendedBuild(c *C) {
 	defer s.removeContainer(containerId)
 	s.checkExtendedBuildState(c, containerId)
 }
+
+// Test an incremental extended build
+func (s *IntegrationTestSuite) TestIncrementalExtendedBuild(c *C) {
+	if !*extended {
+		c.Skip("-extended not provided")
+	}
+
+	tag := TagIncrementalExtendedBuild
+	req := sti.BuildRequest{
+		Request: sti.Request{
+			WorkingDir:   s.tempDir,
+			DockerSocket: DockerSocket,
+			Debug:        true,
+			BaseImage:    FakeBuildImage,
+			RuntimeImage: FakeBaseImage},
+		Source: TestSource,
+		Tag:    tag,
+		Clean:  true,
+		Writer: os.Stdout}
+	resp, err := sti.Build(req)
+	c.Assert(err, IsNil, Commentf("Sti build failed"))
+	c.Assert(resp.Success, Equals, true, Commentf("Sti build failed"))
+
+	os.Remove(s.tempDir)
+	s.tempDir, _ = ioutil.TempDir("", "go-sti-integration")
+	req.WorkingDir = s.tempDir
+	req.Clean = false
+
+	resp, err = sti.Build(req)
+	c.Assert(err, IsNil, Commentf("Sti build failed"))
+	c.Assert(resp.Success, Equals, true, Commentf("Sti build failed"))
+
+	s.checkForImage(c, tag)
+	containerId := s.createContainer(c, tag)
+	defer s.removeContainer(containerId)
+	s.checkIncrementalExtendedBuildState(c, containerId)
+}
+
 func (s *IntegrationTestSuite) checkForImage(c *C, tag string) {
 	_, err := s.dockerClient.InspectImage(tag)
 	c.Assert(err, IsNil, Commentf("Couldn't find built image"))
