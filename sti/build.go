@@ -20,7 +20,7 @@ type Env struct {
 }
 
 type BuildRequest struct {
-	*Request
+	Request
 	Source      string
 	Tag         string
 	Clean       bool

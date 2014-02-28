@@ -36,8 +36,8 @@ func Execute() {
 		// TODO: eliminate pointer from request
 		req         sti.Request
 		envString   string
-		buildReq    = sti.BuildRequest{Request: &req}
-		validateReq = sti.ValidateRequest{Request: &req}
+		buildReq    sti.BuildRequest
+		validateReq sti.ValidateRequest
 	)
 
 	stiCmd := &cobra.Command{
@@ -58,6 +58,7 @@ func Execute() {
 		Short: "Build an image",
 		Long:  "Build an image",
 		Run: func(cmd *cobra.Command, args []string) {
+			buildReq.Request = req
 			buildReq.Source = args[0]
 			buildReq.BaseImage = args[1]
 			buildReq.Tag = args[2]
@@ -98,7 +99,8 @@ func Execute() {
 		Short: "Validate an image",
 		Long:  "Validate an image and optional runtime image",
 		Run: func(cmd *cobra.Command, args []string) {
-			buildReq.BaseImage = args[0]
+			validateReq.Request = req
+			validateReq.BaseImage = args[0]
 			res, err := sti.Validate(validateReq)
 
 			if err != nil {

@@ -24,7 +24,8 @@ type requestHandler struct {
 	debug        bool
 }
 
-func newHandler(req *Request) (*requestHandler, error) {
+func newHandler(req Request) (*requestHandler, error) {
+	log.Printf("Using docker socket: %s\n", req.DockerSocket)
 	dockerClient, err := docker.NewClient(req.DockerSocket)
 
 	if err != nil {

@@ -53,7 +53,7 @@ func (s *IntegrationTestSuite) SetUpTest(c *C) {
 // TestXxxx methods are identified as test cases
 func (s *IntegrationTestSuite) TestValidateSuccess(c *C) {
 	req := sti.ValidateRequest{
-		Request: &sti.Request{
+		Request: sti.Request{
 			WorkingDir:   s.tempDir,
 			DockerSocket: DockerSocket,
 			Debug:        true,
@@ -68,7 +68,7 @@ func (s *IntegrationTestSuite) TestValidateSuccess(c *C) {
 
 func (s *IntegrationTestSuite) TestValidateFailure(c *C) {
 	req := sti.ValidateRequest{
-		Request: &sti.Request{
+		Request: sti.Request{
 			WorkingDir:   s.tempDir,
 			DockerSocket: DockerSocket,
 			Debug:        true,
@@ -83,7 +83,7 @@ func (s *IntegrationTestSuite) TestValidateFailure(c *C) {
 
 func (s *IntegrationTestSuite) TestValidateIncrementalSuccess(c *C) {
 	req := sti.ValidateRequest{
-		Request: &sti.Request{
+		Request: sti.Request{
 			WorkingDir:   s.tempDir,
 			DockerSocket: DockerSocket,
 			Debug:        true,
@@ -101,7 +101,7 @@ func (s *IntegrationTestSuite) TestValidateIncrementalSuccess(c *C) {
 func (s *IntegrationTestSuite) TestCleanBuild(c *C) {
 	tag := TagCleanBuild
 	req := sti.BuildRequest{
-		Request: &sti.Request{
+		Request: sti.Request{
 			WorkingDir:   s.tempDir,
 			DockerSocket: DockerSocket,
 			Debug:        true,
@@ -128,7 +128,7 @@ func (s *IntegrationTestSuite) TestIncrementalBuild(c *C) {
 
 	tag := TagIncrementalBuild
 	req := sti.BuildRequest{
-		Request: &sti.Request{
+		Request: sti.Request{
 			WorkingDir:   s.tempDir,
 			DockerSocket: DockerSocket,
 			Debug:        true,

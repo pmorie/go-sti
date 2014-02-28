@@ -9,7 +9,7 @@ import (
 
 // Describes a request to validate an images for use in an sti build.
 type ValidateRequest struct {
-	*Request
+	Request
 	Incremental bool
 }
 
@@ -61,11 +61,15 @@ func Validate(req ValidateRequest) (*ValidateResult, error) {
 	return result, nil
 }
 
-func (c requestHandler) validateImage(imageName string, incremental bool) (bool, error) {
+func (h requestHandler) validateImage(imageName string, incremental bool) (bool, error) {
 	log.Printf("Validating image %s, incremental: %t\n", imageName, incremental)
-	image, err := c.checkAndPull(imageName)
+	image, err := h.checkAndPull(imageName)
 	if err != nil {
 		return false, err
+	}
+
+	if h.debug {
+		log.Printf("Pulled image %s: {%+v}", imageName, image)
 	}
 
 	if imageHasEntryPoint(image) {
@@ -79,7 +83,7 @@ func (c requestHandler) validateImage(imageName string, incremental bool) (bool,
 		files = append(files, "/usr/bin/save-artifacts")
 	}
 
-	valid, err := c.validateRequiredFiles(imageName, files)
+	valid, err := h.validateRequiredFiles(imageName, files)
 	if err != nil {
 		return false, err
 	}
@@ -87,18 +91,18 @@ func (c requestHandler) validateImage(imageName string, incremental bool) (bool,
 	return valid, nil
 }
 
-func (c requestHandler) validateRequiredFiles(imageName string, files []string) (bool, error) {
-	container, err := c.containerFromImage(imageName)
+func (h requestHandler) validateRequiredFiles(imageName string, files []string) (bool, error) {
+	container, err := h.containerFromImage(imageName)
 	if err != nil {
 		return false, ErrCreateContainerFailed
 	}
-	defer c.dockerClient.RemoveContainer(docker.RemoveContainerOptions{container.ID, true})
+	defer h.dockerClient.RemoveContainer(docker.RemoveContainerOptions{container.ID, true})
 
 	for _, file := range files {
-		if !FileExistsInContainer(c.dockerClient, container.ID, file) {
+		if !FileExistsInContainer(h.dockerClient, container.ID, file) {
 			log.Printf("ERROR: Image %s is missing %s\n", imageName, file)
 			return false, nil
-		} else if c.debug {
+		} else if h.debug {
 			log.Printf("OK: Image %s contains file %s\n", imageName, file)
 		}
 	}
