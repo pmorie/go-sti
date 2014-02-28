@@ -3,7 +3,6 @@ package sti
 import (
 	"archive/tar"
 	"bytes"
-	"github.com/fsouza/go-dockerclient"
 	"io"
 	"io/ioutil"
 	"os"
@@ -11,6 +10,8 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
+
+	"github.com/fsouza/go-dockerclient"
 )
 
 // Determine whether a file exists in a container.

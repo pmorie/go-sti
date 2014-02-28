@@ -2,11 +2,12 @@ package cmd
 
 import (
 	"fmt"
-	"github.com/pmorie/go-sti/sti"
-	"github.com/smarterclayton/cobra"
 	"io/ioutil"
 	"os"
 	"strings"
+
+	"github.com/pmorie/go-sti/sti"
+	"github.com/smarterclayton/cobra"
 )
 
 func parseEnvs(envStr string) ([]sti.Env, error) {
@@ -32,12 +33,12 @@ func parseEnvs(envStr string) ([]sti.Env, error) {
 
 func Execute() {
 	var (
-		req       sti.Request
-		envString string
+		// TODO: eliminate pointer from request
+		req         sti.Request
+		envString   string
+		buildReq    = sti.BuildRequest{Request: &req}
+		validateReq = sti.ValidateRequest{Request: &req}
 	)
-
-	buildReq := sti.BuildRequest{Request: &req}
-	validateReq := sti.ValidateRequest{Request: &req}
 
 	stiCmd := &cobra.Command{
 		Use:   "sti",

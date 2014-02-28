@@ -10,6 +10,7 @@ const (
 	ErrSaveArtifactsFailed
 	ErrCreateDockerfileFailed
 	ErrCreateContainerFailed
+	ErrBuildFailed
 )
 
 func (s StiError) Error() string {
@@ -28,6 +29,8 @@ func (s StiError) Error() string {
 		return "Error creating Dockerfile"
 	case ErrCreateContainerFailed:
 		return "Error creating container"
+	case ErrBuildFailed:
+		return "Running /usr/bin/prepare in base image failed"
 	default:
 		return "Unknown error"
 	}

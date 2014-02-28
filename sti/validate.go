@@ -2,8 +2,9 @@ package sti
 
 import (
 	"fmt"
-	"github.com/fsouza/go-dockerclient"
 	"log"
+
+	"github.com/fsouza/go-dockerclient"
 )
 
 // Describes a request to validate an images for use in an sti build.
