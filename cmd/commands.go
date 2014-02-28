@@ -33,7 +33,6 @@ func parseEnvs(envStr string) ([]sti.Env, error) {
 
 func Execute() {
 	var (
-		// TODO: eliminate pointer from request
 		req         sti.Request
 		envString   string
 		buildReq    sti.BuildRequest

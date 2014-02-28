@@ -79,7 +79,7 @@ func Build(req BuildRequest) (*BuildResult, error) {
 
 func (h requestHandler) detectIncrementalBuild(tag string) (bool, error) {
 	if h.debug {
-		log.Printf("Determining where image %s is compatible with incremental build", tag)
+		log.Printf("Determining whether image %s is compatible with incremental build", tag)
 	}
 
 	container, err := h.containerFromImage(tag)
@@ -228,6 +228,9 @@ func (h requestHandler) prepareSourceDir(source string, targetSourceDir string) 
 		}
 		err := gitClone(source, targetSourceDir)
 		if err != nil {
+			if h.debug {
+				log.Printf("Git clone failed: %+v", err)
+			}
 			return err
 		}
 	} else {

@@ -2,4 +2,3 @@
 
 go get ./...
 go build -o go-sti .
-sudo /usr/bin/cp -f go-sti /usr/bin/

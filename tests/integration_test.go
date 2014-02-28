@@ -20,21 +20,27 @@ type IntegrationTestSuite struct {
 	tempDir      string
 }
 
-// Register IntegrationTestSuite with the gocheck suite manager
-var _ = Suite(&IntegrationTestSuite{})
+// Register IntegrationTestSuite with the gocheck suite manager and add support for 'go test' flags,
+// viz: go test -integration -extended
+var (
+	_ = Suite(&IntegrationTestSuite{})
 
-const (
-	DockerSocket        = "unix:///var/run/docker.sock"
-	TestSource          = "git://github.com/pmorie/simple-html"
-	FakeBaseImage       = "pmorie/sti-fake"
-	BrokenBaseImage     = "pmorie/sti-fake-broken"
-	TagCleanBuild       = "sti/test-fake-app"
-	TagIncrementalBuild = "sti/test-incremental-app"
+	integration = flag.Bool("integration", false, "Include integration tests")
+	extended    = flag.Bool("extended", false, "Include long-running tests")
 )
 
-// Add support for 'go test' flags, viz: go test -integration -extended
-var integration = flag.Bool("integration", false, "Include integration tests")
-var extended = flag.Bool("extended", false, "Include long-running tests")
+const (
+	DockerSocket = "unix:///var/run/docker.sock"
+	TestSource   = "git://github.com/pmorie/simple-html"
+
+	FakeBaseImage       = "pmorie/sti-fake"
+	FakeBuildImage      = "pmorie/sti-fake-builder"
+	FakeBrokenBaseImage = "pmorie/sti-fake-broken"
+
+	TagCleanBuild       = "test/sti-fake-app"
+	TagIncrementalBuild = "test/sti-incremental-app"
+	TagExtendedBuild    = "test/sti-extended-app"
+)
 
 // Suite/Test fixtures are provided by gocheck
 func (s *IntegrationTestSuite) SetUpSuite(c *C) {
@@ -44,13 +50,15 @@ func (s *IntegrationTestSuite) SetUpSuite(c *C) {
 
 	s.dockerClient, _ = docker.NewClient(DockerSocket)
 	s.tempDir, _ = ioutil.TempDir("", "go-sti-integration")
-}
 
-func (s *IntegrationTestSuite) SetUpTest(c *C) {
-	s.dockerClient.RemoveImage("sti/test-fake-app")
+	for _, image := range []string{TagCleanBuild, TagIncrementalBuild, TagExtendedBuild} {
+		s.dockerClient.RemoveImage(image)
+	}
 }
 
 // TestXxxx methods are identified as test cases
+
+// Test the most basic validate case
 func (s *IntegrationTestSuite) TestValidateSuccess(c *C) {
 	req := sti.ValidateRequest{
 		Request: sti.Request{
@@ -66,13 +74,14 @@ func (s *IntegrationTestSuite) TestValidateSuccess(c *C) {
 	c.Assert(resp.Valid, Equals, true, Commentf("Validation failed: invalid response"))
 }
 
+// Test a basic validation failure
 func (s *IntegrationTestSuite) TestValidateFailure(c *C) {
 	req := sti.ValidateRequest{
 		Request: sti.Request{
 			WorkingDir:   s.tempDir,
 			DockerSocket: DockerSocket,
 			Debug:        true,
-			BaseImage:    BrokenBaseImage,
+			BaseImage:    FakeBrokenBaseImage,
 		},
 		Incremental: false,
 	}
@@ -81,7 +90,8 @@ func (s *IntegrationTestSuite) TestValidateFailure(c *C) {
 	c.Assert(resp.Valid, Equals, false, Commentf("Validation should have failed: invalid response"))
 }
 
-func (s *IntegrationTestSuite) TestValidateIncrementalSuccess(c *C) {
+// Test an extended validation
+func (s *IntegrationTestSuite) TestValidateExtendedSuccess(c *C) {
 	req := sti.ValidateRequest{
 		Request: sti.Request{
 			WorkingDir:   s.tempDir,
@@ -90,11 +100,26 @@ func (s *IntegrationTestSuite) TestValidateIncrementalSuccess(c *C) {
 			BaseImage:    FakeBaseImage,
 			RuntimeImage: FakeBaseImage,
 		},
-		Incremental: true,
 	}
 	resp, err := sti.Validate(req)
 	c.Assert(err, IsNil, Commentf("Validation failed: err"))
 	c.Assert(resp.Valid, Equals, true, Commentf("Validation failed: invalid response"))
+}
+
+// Test an extended validation with a broken runtime image
+func (s *IntegrationTestSuite) TestValidateExtendedFailure(c *C) {
+	req := sti.ValidateRequest{
+		Request: sti.Request{
+			WorkingDir:   s.tempDir,
+			DockerSocket: DockerSocket,
+			Debug:        true,
+			BaseImage:    FakeBaseImage,
+			RuntimeImage: FakeBrokenBaseImage,
+		},
+	}
+	resp, err := sti.Validate(req)
+	c.Assert(err, IsNil, Commentf("Validation failed: err"))
+	c.Assert(resp.Valid, Equals, false, Commentf("Validation should have failed: invalid response"))
 }
 
 // Test a clean build.  The simplest case.
@@ -141,7 +166,11 @@ func (s *IntegrationTestSuite) TestIncrementalBuild(c *C) {
 	c.Assert(err, IsNil, Commentf("Sti build failed"))
 	c.Assert(resp.Success, Equals, true, Commentf("Sti build failed"))
 
+	os.Remove(s.tempDir)
+	s.tempDir, _ = ioutil.TempDir("", "go-sti-integration")
+	req.WorkingDir = s.tempDir
 	req.Clean = false
+
 	resp, err = sti.Build(req)
 	c.Assert(err, IsNil, Commentf("Sti build failed"))
 	c.Assert(resp.Success, Equals, true, Commentf("Sti build failed"))
