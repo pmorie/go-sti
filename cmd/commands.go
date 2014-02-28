@@ -33,7 +33,6 @@ func parseEnvs(envStr string) ([]sti.Env, error) {
 
 func Execute() {
 	var (
-		// TODO: eliminate pointer from request
 		req         sti.Request
 		envString   string
 		buildReq    sti.BuildRequest
@@ -90,7 +89,7 @@ func Execute() {
 	}
 	buildCmd.Flags().BoolVar(&(buildReq.Clean), "clean", false, "Perform a clean build")
 	buildCmd.Flags().StringVar(&(req.WorkingDir), "dir", "tempdir", "Directory where generated Dockerfiles and other support scripts are created")
-	buildCmd.Flags().StringVar(&(req.RuntimeImage), "runtime-image", "", "Set the runtime image to use")
+	buildCmd.Flags().StringVarP(&(req.RuntimeImage), "runtime", "R", "", "Set the runtime image to use")
 	buildCmd.Flags().StringVarP(&envString, "env", "e", "", "Specify an environment var NAME=VALUE,NAME2=VALUE2,...")
 	stiCmd.AddCommand(buildCmd)
 

@@ -79,14 +79,14 @@ func Build(req BuildRequest) (*BuildResult, error) {
 
 func (h requestHandler) detectIncrementalBuild(tag string) (bool, error) {
 	if h.debug {
-		log.Printf("Determining where image %s is compatible with incremental build", tag)
+		log.Printf("Determining whether image %s is compatible with incremental build", tag)
 	}
 
 	container, err := h.containerFromImage(tag)
 	if err != nil {
 		return false, err
 	}
-	defer h.dockerClient.RemoveContainer(docker.RemoveContainerOptions{container.ID, true})
+	defer h.removeContainer(container.ID)
 
 	return FileExistsInContainer(h.dockerClient, container.ID, "/usr/bin/save-artifacts"), nil
 }
@@ -160,15 +160,24 @@ func (h requestHandler) extendedBuild(req BuildRequest, incremental bool) (*Buil
 		outputSourceDir + ":/usr/build",
 	}
 
-	config := docker.Config{Image: req.RuntimeImage, Cmd: []string{"/usr/bin/prepare"}, Volumes: volumeMap}
+	if h.debug {
+		log.Println("Creating build container to run source build")
+	}
+
+	config := docker.Config{Image: req.BaseImage, Cmd: []string{"/usr/bin/prepare"}, Volumes: volumeMap}
 	container, err := h.dockerClient.CreateContainer(docker.CreateContainerOptions{Name: "", Config: &config})
 	if err != nil {
 		return nil, err
 	}
-
 	cID := container.ID
-	hostConfig := docker.HostConfig{Binds: bindMounts}
 
+	if h.debug {
+		log.Printf("Build container: %s\n", cID)
+	} else {
+		defer h.removeContainer(cID)
+	}
+
+	hostConfig := docker.HostConfig{Binds: bindMounts}
 	err = h.dockerClient.StartContainer(cID, &hostConfig)
 	if err != nil {
 		return nil, err
@@ -196,10 +205,10 @@ func (h requestHandler) saveArtifacts(image string, path string) error {
 
 	config := docker.Config{Image: image, Cmd: []string{"/usr/bin/save-artifacts"}, Volumes: volumeMap}
 	container, err := h.dockerClient.CreateContainer(docker.CreateContainerOptions{Name: "", Config: &config})
-
 	if err != nil {
 		return err
 	}
+	defer h.removeContainer(container.ID)
 
 	hostConfig := docker.HostConfig{Binds: []string{path + ":/usr/artifacts"}}
 	err = h.dockerClient.StartContainer(container.ID, &hostConfig)
@@ -228,6 +237,9 @@ func (h requestHandler) prepareSourceDir(source string, targetSourceDir string) 
 		}
 		err := gitClone(source, targetSourceDir)
 		if err != nil {
+			if h.debug {
+				log.Printf("Git clone failed: %+v", err)
+			}
 			return err
 		}
 	} else {
