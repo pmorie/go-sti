@@ -3,7 +3,6 @@ package sti
 import (
 	"bufio"
 	"bytes"
-	"github.com/fsouza/go-dockerclient"
 	"io"
 	"log"
 	"os"
@@ -11,6 +10,8 @@ import (
 	"regexp"
 	"strings"
 	"text/template"
+
+	"github.com/fsouza/go-dockerclient"
 )
 
 type Env struct {
@@ -19,7 +20,7 @@ type Env struct {
 }
 
 type BuildRequest struct {
-	*Request
+	Request
 	Source      string
 	Tag         string
 	Clean       bool
@@ -113,11 +114,76 @@ func (h requestHandler) build(req BuildRequest, incremental bool) (*BuildResult,
 		return nil, err
 	}
 
-	return h.buildDeployableImage(req, req.WorkingDir, incremental)
+	return h.buildDeployableImage(req, req.BaseImage, req.WorkingDir, incremental)
 }
 
 func (h requestHandler) extendedBuild(req BuildRequest, incremental bool) (*BuildResult, error) {
-	return nil, nil
+	var (
+		wd = req.WorkingDir
+
+		builderBuildDir     = filepath.Join(wd, "build")
+		previousBuildVolume = filepath.Join(builderBuildDir, "last_build_artifacts")
+		inputSourceDir      = filepath.Join(builderBuildDir, "src")
+
+		runtimeBuildDir = filepath.Join(wd, "runtime")
+		outputSourceDir = filepath.Join(runtimeBuildDir, "src")
+	)
+
+	for _, dir := range []string{builderBuildDir, runtimeBuildDir, previousBuildVolume, outputSourceDir} {
+		err := os.Mkdir(dir, 0700)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if incremental {
+		err := h.saveArtifacts(req.Tag, previousBuildVolume)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	err := h.prepareSourceDir(req.Source, inputSourceDir)
+	if err != nil {
+		return nil, err
+	}
+
+	// TODO: necessary to specify these, if specifying bind-mounts?
+	volumeMap := make(map[string]struct{})
+	volumeMap["/usr/artifacts"] = struct{}{}
+	volumeMap["/usr/src"] = struct{}{}
+	volumeMap["/usr/build"] = struct{}{}
+
+	bindMounts := []string{
+		previousBuildVolume + ":/usr/artifacts",
+		inputSourceDir + ":/usr/src",
+		outputSourceDir + ":/usr/build",
+	}
+
+	config := docker.Config{Image: req.RuntimeImage, Cmd: []string{"/usr/bin/prepare"}, Volumes: volumeMap}
+	container, err := h.dockerClient.CreateContainer(docker.CreateContainerOptions{Name: "", Config: &config})
+	if err != nil {
+		return nil, err
+	}
+
+	cID := container.ID
+	hostConfig := docker.HostConfig{Binds: bindMounts}
+
+	err = h.dockerClient.StartContainer(cID, &hostConfig)
+	if err != nil {
+		return nil, err
+	}
+
+	exitCode, err := h.dockerClient.WaitContainer(cID)
+	if err != nil {
+		return nil, err
+	}
+
+	if exitCode != 0 {
+		return nil, ErrBuildFailed
+	}
+
+	return h.buildDeployableImage(req, req.RuntimeImage, runtimeBuildDir, incremental)
 }
 
 func (h requestHandler) saveArtifacts(image string, path string) error {
@@ -125,9 +191,8 @@ func (h requestHandler) saveArtifacts(image string, path string) error {
 		log.Printf("Saving build artifacts from image %s to path %s\n", image, path)
 	}
 
-	var volumeMap map[string]struct{}
-	volumeMap = make(map[string]struct{})
-	volumeMap["/usr/artifacts"] = *new(struct{})
+	volumeMap := make(map[string]struct{})
+	volumeMap["/usr/artifacts"] = struct{}{}
 
 	config := docker.Config{Image: image, Cmd: []string{"/usr/bin/save-artifacts"}, Volumes: volumeMap}
 	container, err := h.dockerClient.CreateContainer(docker.CreateContainerOptions{Name: "", Config: &config})
@@ -138,8 +203,11 @@ func (h requestHandler) saveArtifacts(image string, path string) error {
 
 	hostConfig := docker.HostConfig{Binds: []string{path + ":/usr/artifacts"}}
 	err = h.dockerClient.StartContainer(container.ID, &hostConfig)
-	exitCode, err := h.dockerClient.WaitContainer(container.ID)
+	if err != nil {
+		return err
+	}
 
+	exitCode, err := h.dockerClient.WaitContainer(container.ID)
 	if err != nil {
 		return err
 	}
@@ -178,7 +246,7 @@ var dockerFileTemplate = template.Must(template.New("Dockerfile").Parse("" +
 	"RUN /usr/bin/prepare\n" +
 	"CMD /usr/bin/run\n"))
 
-func (h requestHandler) buildDeployableImage(req BuildRequest, contextDir string, incremental bool) (*BuildResult, error) {
+func (h requestHandler) buildDeployableImage(req BuildRequest, image string, contextDir string, incremental bool) (*BuildResult, error) {
 	dockerFilePath := filepath.Join(contextDir, "Dockerfile")
 	dockerFile, err := openFileExclusive(dockerFilePath, 0700)
 	if err != nil {
@@ -190,7 +258,7 @@ func (h requestHandler) buildDeployableImage(req BuildRequest, contextDir string
 		BaseImage   string
 		Environment []Env
 		Incremental bool
-	}{req.BaseImage, req.Environment, incremental}
+	}{image, req.Environment, incremental}
 	err = dockerFileTemplate.Execute(dockerFile, templateFiller)
 	if err != nil {
 		return nil, ErrCreateDockerfileFailed

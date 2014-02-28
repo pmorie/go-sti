@@ -2,12 +2,14 @@ package tests
 
 import (
 	"flag"
-	"github.com/fsouza/go-dockerclient"
-	"github.com/pmorie/go-sti/sti"
 	"io/ioutil"
-	. "launchpad.net/gocheck"
 	"os"
 	"testing"
+
+	. "launchpad.net/gocheck"
+
+	"github.com/fsouza/go-dockerclient"
+	"github.com/pmorie/go-sti/sti"
 )
 
 // Register gocheck with the 'testing' runner
@@ -51,12 +53,11 @@ func (s *IntegrationTestSuite) SetUpTest(c *C) {
 // TestXxxx methods are identified as test cases
 func (s *IntegrationTestSuite) TestValidateSuccess(c *C) {
 	req := sti.ValidateRequest{
-		Request: &sti.Request{
-			Configuration: sti.Configuration{
-				WorkingDir:   s.tempDir,
-				DockerSocket: DockerSocket,
-				Debug:        true},
-			BaseImage: FakeBaseImage,
+		Request: sti.Request{
+			WorkingDir:   s.tempDir,
+			DockerSocket: DockerSocket,
+			Debug:        true,
+			BaseImage:    FakeBaseImage,
 		},
 		Incremental: false,
 	}
@@ -67,12 +68,11 @@ func (s *IntegrationTestSuite) TestValidateSuccess(c *C) {
 
 func (s *IntegrationTestSuite) TestValidateFailure(c *C) {
 	req := sti.ValidateRequest{
-		Request: &sti.Request{
-			Configuration: sti.Configuration{
-				WorkingDir:   s.tempDir,
-				DockerSocket: DockerSocket,
-				Debug:        true},
-			BaseImage: BrokenBaseImage,
+		Request: sti.Request{
+			WorkingDir:   s.tempDir,
+			DockerSocket: DockerSocket,
+			Debug:        true,
+			BaseImage:    BrokenBaseImage,
 		},
 		Incremental: false,
 	}
@@ -83,14 +83,14 @@ func (s *IntegrationTestSuite) TestValidateFailure(c *C) {
 
 func (s *IntegrationTestSuite) TestValidateIncrementalSuccess(c *C) {
 	req := sti.ValidateRequest{
-		Request: &sti.Request{
-			Configuration: sti.Configuration{
-				WorkingDir:   s.tempDir,
-				DockerSocket: DockerSocket,
-				Debug:        true},
+		Request: sti.Request{
+			WorkingDir:   s.tempDir,
+			DockerSocket: DockerSocket,
+			Debug:        true,
 			BaseImage:    FakeBaseImage,
 			RuntimeImage: FakeBaseImage,
 		},
+		Incremental: true,
 	}
 	resp, err := sti.Validate(req)
 	c.Assert(err, IsNil, Commentf("Validation failed: err"))
@@ -101,15 +101,14 @@ func (s *IntegrationTestSuite) TestValidateIncrementalSuccess(c *C) {
 func (s *IntegrationTestSuite) TestCleanBuild(c *C) {
 	tag := TagCleanBuild
 	req := sti.BuildRequest{
-		Request: &sti.Request{
-			Configuration: sti.Configuration{
-				WorkingDir:   s.tempDir,
-				DockerSocket: DockerSocket,
-				Debug:        true},
-			BaseImage: FakeBaseImage},
-		Clean:  true,
+		Request: sti.Request{
+			WorkingDir:   s.tempDir,
+			DockerSocket: DockerSocket,
+			Debug:        true,
+			BaseImage:    FakeBaseImage},
 		Source: TestSource,
 		Tag:    tag,
+		Clean:  true,
 		Writer: os.Stdout}
 	resp, err := sti.Build(req)
 	c.Assert(err, IsNil, Commentf("Sti build failed"))
@@ -129,15 +128,14 @@ func (s *IntegrationTestSuite) TestIncrementalBuild(c *C) {
 
 	tag := TagIncrementalBuild
 	req := sti.BuildRequest{
-		Request: &sti.Request{
-			Configuration: sti.Configuration{
-				WorkingDir:   s.tempDir,
-				DockerSocket: DockerSocket,
-				Debug:        true},
-			BaseImage: FakeBaseImage},
-		Clean:  true,
+		Request: sti.Request{
+			WorkingDir:   s.tempDir,
+			DockerSocket: DockerSocket,
+			Debug:        true,
+			BaseImage:    FakeBaseImage},
 		Source: TestSource,
 		Tag:    tag,
+		Clean:  true,
 		Writer: os.Stdout}
 	resp, err := sti.Build(req)
 	c.Assert(err, IsNil, Commentf("Sti build failed"))

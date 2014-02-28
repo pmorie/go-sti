@@ -3,7 +3,6 @@ package sti
 import (
 	"archive/tar"
 	"bytes"
-	"github.com/fsouza/go-dockerclient"
 	"io"
 	"io/ioutil"
 	"os"
@@ -11,6 +10,8 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
+
+	"github.com/fsouza/go-dockerclient"
 )
 
 // Determine whether a file exists in a container.
@@ -87,7 +88,13 @@ func gitClone(source string, targetPath string) error {
 }
 
 func imageHasEntryPoint(image *docker.Image) bool {
-	return image.Config.Entrypoint != nil
+	found := (image.ContainerConfig.Entrypoint != nil)
+
+	if !found && image.Config != nil {
+		found = image.Config.Entrypoint != nil
+	}
+
+	return found
 }
 
 func openFileExclusive(path string, mode os.FileMode) (*os.File, error) {

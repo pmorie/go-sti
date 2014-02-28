@@ -1,26 +1,21 @@
 package sti
 
 import (
-	"github.com/fsouza/go-dockerclient"
 	"log"
+
+	"github.com/fsouza/go-dockerclient"
 )
-
-// Configuration specifies basic configuration parameters of the library.
-type Configuration struct {
-	DockerSocket  string
-	DockerTimeout int
-	WorkingDir    string
-	Debug         bool
-}
-
-// TODO: collapse with Request?
 
 // Request contains essential fields for any request: a Configuration, a base image, and an
 // optional runtime image.
 type Request struct {
-	Configuration
 	BaseImage    string
 	RuntimeImage string
+
+	DockerSocket  string
+	DockerTimeout int
+	WorkingDir    string
+	Debug         bool
 }
 
 // requestHandler encapsulates dependencies needed to fulfill requests.
@@ -29,7 +24,8 @@ type requestHandler struct {
 	debug        bool
 }
 
-func newHandler(req *Request) (*requestHandler, error) {
+func newHandler(req Request) (*requestHandler, error) {
+	log.Printf("Using docker socket: %s\n", req.DockerSocket)
 	dockerClient, err := docker.NewClient(req.DockerSocket)
 
 	if err != nil {
