@@ -178,9 +178,32 @@ func (s *IntegrationTestSuite) TestIncrementalBuild(c *C) {
 	s.checkForImage(c, tag)
 	containerId := s.createContainer(c, tag)
 	defer s.removeContainer(containerId)
-	s.checkBasicBuildState(c, containerId)
+	s.checkIncrementalBuildState(c, containerId)
 }
 
+// Test an extended build.
+func (s *IntegrationTestSuite) TestExtendedBuild(c *C) {
+	tag := TagIncrementalBuild
+	req := sti.BuildRequest{
+		Request: sti.Request{
+			WorkingDir:   s.tempDir,
+			DockerSocket: DockerSocket,
+			Debug:        true,
+			BaseImage:    FakeBuildImage,
+			RuntimeImage: FakeBaseImage},
+		Source: TestSource,
+		Tag:    tag,
+		Clean:  true,
+		Writer: os.Stdout}
+	resp, err := sti.Build(req)
+	c.Assert(err, IsNil, Commentf("Sti build failed"))
+	c.Assert(resp.Success, Equals, true, Commentf("Sti build failed"))
+
+	s.checkForImage(c, tag)
+	containerId := s.createContainer(c, tag)
+	defer s.removeContainer(containerId)
+	s.checkExtendedBuildState(c, containerId)
+}
 func (s *IntegrationTestSuite) checkForImage(c *C, tag string) {
 	_, err := s.dockerClient.InspectImage(tag)
 	c.Assert(err, IsNil, Commentf("Couldn't find built image"))
