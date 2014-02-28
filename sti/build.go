@@ -41,15 +41,23 @@ func Build(req BuildRequest) (*BuildResult, error) {
 
 	incremental := !req.Clean
 
+	// If a runtime image is defined, check for the presence of an
+	// existing build image for the app to determine if an incremental
+	// build should be performed
+	tag := req.Tag
+	if req.RuntimeImage != "" {
+		tag = tag + "-build"
+	}
+
 	if incremental {
-		exists, err := h.isImageInLocalRegistry(req.Tag)
+		exists, err := h.isImageInLocalRegistry(tag)
 
 		if err != nil {
 			return nil, err
 		}
 
 		if exists {
-			incremental, err = h.detectIncrementalBuild(req.Tag)
+			incremental, err = h.detectIncrementalBuild(tag)
 			if err != nil {
 				return nil, err
 			}
@@ -60,7 +68,7 @@ func Build(req BuildRequest) (*BuildResult, error) {
 
 	if h.debug {
 		if incremental {
-			log.Printf("Existing image for tag %s detected for incremental build\n", req.Tag)
+			log.Printf("Existing image for tag %s detected for incremental build\n", tag)
 		} else {
 			log.Printf("Clean build will be performed")
 		}
@@ -119,7 +127,8 @@ func (h requestHandler) build(req BuildRequest, incremental bool) (*BuildResult,
 
 func (h requestHandler) extendedBuild(req BuildRequest, incremental bool) (*BuildResult, error) {
 	var (
-		wd = req.WorkingDir
+		buildImageTag = req.Tag + "-build"
+		wd            = req.WorkingDir
 
 		builderBuildDir     = filepath.Join(wd, "build")
 		previousBuildVolume = filepath.Join(builderBuildDir, "last_build_artifacts")
@@ -137,7 +146,7 @@ func (h requestHandler) extendedBuild(req BuildRequest, incremental bool) (*Buil
 	}
 
 	if incremental {
-		err := h.saveArtifacts(req.Tag, previousBuildVolume)
+		err := h.saveArtifacts(buildImageTag, previousBuildVolume)
 		if err != nil {
 			return nil, err
 		}
@@ -192,7 +201,21 @@ func (h requestHandler) extendedBuild(req BuildRequest, incremental bool) (*Buil
 		return nil, ErrBuildFailed
 	}
 
-	return h.buildDeployableImage(req, req.RuntimeImage, runtimeBuildDir, incremental)
+	buildResult, err := h.buildDeployableImage(req, req.RuntimeImage, runtimeBuildDir, false)
+	if err != nil {
+		return nil, err
+	}
+
+	if h.debug {
+		log.Printf("Commiting build container %s to tag %s", cID, buildImageTag)
+	}
+
+	err = h.commitContainer(cID, buildImageTag)
+	if err != nil {
+		log.Printf("Unable commit container %s to tag %s\n", cID, buildImageTag)
+	}
+
+	return buildResult, nil
 }
 
 func (h requestHandler) saveArtifacts(image string, path string) error {
