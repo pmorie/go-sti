@@ -49,7 +49,7 @@ func (s *IntegrationTestSuite) SetUpSuite(c *C) {
 	}
 
 	s.dockerClient, _ = docker.NewClient(DockerSocket)
-	s.tempDir, _ = ioutil.TempDir("", "go-sti-integration")
+	s.tempDir, _ = ioutil.TempDir("/tmp", "go-sti-integration")
 
 	for _, image := range []string{TagCleanBuild, TagIncrementalBuild, TagExtendedBuild} {
 		s.dockerClient.RemoveImage(image)

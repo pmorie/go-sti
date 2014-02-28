@@ -47,31 +47,6 @@ func (h requestHandler) isImageInLocalRegistry(imageName string) (bool, error) {
 	return false, err
 }
 
-func (h requestHandler) containerFromImage(imageName string) (*docker.Container, error) {
-	config := docker.Config{Image: imageName, AttachStdout: false, AttachStderr: false, Cmd: []string{"/bin/true"}}
-	container, err := h.dockerClient.CreateContainer(docker.CreateContainerOptions{Name: "", Config: &config})
-	if err != nil {
-		return nil, err
-	}
-
-	err = h.dockerClient.StartContainer(container.ID, &docker.HostConfig{})
-	if err != nil {
-		return nil, err
-	}
-
-	exitCode, err := h.dockerClient.WaitContainer(container.ID)
-	if err != nil {
-		return nil, err
-	}
-
-	if exitCode != 0 {
-		log.Printf("Container exit code: %d\n", exitCode)
-		return nil, ErrCreateContainerFailed
-	}
-
-	return container, nil
-}
-
 func (h requestHandler) checkAndPull(imageName string) (*docker.Image, error) {
 	image, err := h.dockerClient.InspectImage(imageName)
 	if err != nil {
@@ -97,4 +72,33 @@ func (h requestHandler) checkAndPull(imageName string) (*docker.Image, error) {
 	}
 
 	return image, nil
+}
+
+func (h requestHandler) containerFromImage(imageName string) (*docker.Container, error) {
+	config := docker.Config{Image: imageName, AttachStdout: false, AttachStderr: false, Cmd: []string{"/bin/true"}}
+	container, err := h.dockerClient.CreateContainer(docker.CreateContainerOptions{Name: "", Config: &config})
+	if err != nil {
+		return nil, err
+	}
+
+	err = h.dockerClient.StartContainer(container.ID, &docker.HostConfig{})
+	if err != nil {
+		return nil, err
+	}
+
+	exitCode, err := h.dockerClient.WaitContainer(container.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	if exitCode != 0 {
+		log.Printf("Container exit code: %d\n", exitCode)
+		return nil, ErrCreateContainerFailed
+	}
+
+	return container, nil
+}
+
+func (h requestHandler) removeContainer(id string) {
+	h.dockerClient.RemoveContainer(docker.RemoveContainerOptions{id, true})
 }
