@@ -24,6 +24,7 @@ type requestHandler struct {
 	debug        bool
 }
 
+// Returns a new handler for a given request.
 func newHandler(req Request) (*requestHandler, error) {
 	if req.Debug {
 		log.Printf("Using docker socket: %s\n", req.DockerSocket)
@@ -37,6 +38,7 @@ func newHandler(req Request) (*requestHandler, error) {
 	return &requestHandler{dockerClient, req.Debug}, nil
 }
 
+// Determines whether the supplied image is in the local registry.
 func (h requestHandler) isImageInLocalRegistry(imageName string) (bool, error) {
 	image, err := h.dockerClient.InspectImage(imageName)
 
@@ -49,6 +51,7 @@ func (h requestHandler) isImageInLocalRegistry(imageName string) (bool, error) {
 	return false, err
 }
 
+// Pull an image into the local registry
 func (h requestHandler) checkAndPull(imageName string) (*docker.Image, error) {
 	image, err := h.dockerClient.InspectImage(imageName)
 	if err != nil {
@@ -76,6 +79,7 @@ func (h requestHandler) checkAndPull(imageName string) (*docker.Image, error) {
 	return image, nil
 }
 
+// Creates a container from a given image name and returns the ID of the created container.
 func (h requestHandler) containerFromImage(imageName string) (*docker.Container, error) {
 	config := docker.Config{Image: imageName, AttachStdout: false, AttachStderr: false, Cmd: []string{"/bin/true"}}
 	container, err := h.dockerClient.CreateContainer(docker.CreateContainerOptions{Name: "", Config: &config})
@@ -101,10 +105,12 @@ func (h requestHandler) containerFromImage(imageName string) (*docker.Container,
 	return container, nil
 }
 
+// Remove a container and its associated volumes.
 func (h requestHandler) removeContainer(id string) {
 	h.dockerClient.RemoveContainer(docker.RemoveContainerOptions{id, true})
 }
 
+// Commit the container with the given ID with the given tag.
 func (h requestHandler) commitContainer(id, tag string) error {
 	// TODO: commit message / author?
 	_, err := h.dockerClient.CommitContainer(docker.CommitContainerOptions{Container: id, Repository: tag})

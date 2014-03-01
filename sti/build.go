@@ -33,6 +33,10 @@ type BuildResult struct {
 	Messages []string
 }
 
+// Build processes a BuildRequest and returns a *BuildResult and an error.
+// An error represents a failure performing the build rather than a failure
+// of the build itself.  Callers should check the Success field of the result
+// to determine whether a build succeeded or not.
 func Build(req BuildRequest) (*BuildResult, error) {
 	h, err := newHandler(req.Request)
 	if err != nil {
