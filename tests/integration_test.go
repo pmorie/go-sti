@@ -245,6 +245,7 @@ func (s *IntegrationTestSuite) TestIncrementalExtendedBuild(c *C) {
 	s.checkIncrementalExtendedBuildState(c, containerId)
 }
 
+// Support methods
 func (s *IntegrationTestSuite) checkForImage(c *C, tag string) {
 	_, err := s.dockerClient.InspectImage(tag)
 	c.Assert(err, IsNil, Commentf("Couldn't find built image"))
