@@ -1,4 +1,4 @@
 #!/bin/bash -x
 
 go get ./...
-go build -o go-sti .
+go build -o sti cli/sti.go
