@@ -1,12 +1,14 @@
-package cmd
+package main
 
 import (
+	_ "net/http/pprof"
+
 	"fmt"
 	"io/ioutil"
 	"os"
 	"strings"
 
-	"github.com/pmorie/go-sti/sti"
+	"github.com/pmorie/go-sti"
 	"github.com/smarterclayton/cobra"
 )
 
@@ -117,4 +119,8 @@ func Execute() {
 	stiCmd.AddCommand(validateCmd)
 
 	stiCmd.Execute()
+}
+
+func main() {
+	Execute()
 }

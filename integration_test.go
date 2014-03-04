@@ -1,4 +1,4 @@
-package tests
+package sti
 
 import (
 	"flag"
@@ -9,7 +9,6 @@ import (
 	. "launchpad.net/gocheck"
 
 	"github.com/fsouza/go-dockerclient"
-	"github.com/pmorie/go-sti/sti"
 )
 
 // Register gocheck with the 'testing' runner
@@ -63,8 +62,8 @@ func (s *IntegrationTestSuite) SetUpTest(c *C) {
 
 // Test the most basic validate case
 func (s *IntegrationTestSuite) TestValidateSuccess(c *C) {
-	req := sti.ValidateRequest{
-		Request: sti.Request{
+	req := ValidateRequest{
+		Request: Request{
 			WorkingDir:   s.tempDir,
 			DockerSocket: DockerSocket,
 			Debug:        true,
@@ -72,15 +71,15 @@ func (s *IntegrationTestSuite) TestValidateSuccess(c *C) {
 		},
 		Incremental: false,
 	}
-	resp, err := sti.Validate(req)
+	resp, err := Validate(req)
 	c.Assert(err, IsNil, Commentf("Validation failed: err"))
 	c.Assert(resp.Valid, Equals, true, Commentf("Validation failed: invalid response"))
 }
 
 // Test a basic validation failure
 func (s *IntegrationTestSuite) TestValidateFailure(c *C) {
-	req := sti.ValidateRequest{
-		Request: sti.Request{
+	req := ValidateRequest{
+		Request: Request{
 			WorkingDir:   s.tempDir,
 			DockerSocket: DockerSocket,
 			Debug:        true,
@@ -88,15 +87,15 @@ func (s *IntegrationTestSuite) TestValidateFailure(c *C) {
 		},
 		Incremental: false,
 	}
-	resp, err := sti.Validate(req)
+	resp, err := Validate(req)
 	c.Assert(err, IsNil, Commentf("Validation failed: err"))
 	c.Assert(resp.Valid, Equals, false, Commentf("Validation should have failed: invalid response"))
 }
 
 // Test an extended validation
 func (s *IntegrationTestSuite) TestValidateExtendedSuccess(c *C) {
-	req := sti.ValidateRequest{
-		Request: sti.Request{
+	req := ValidateRequest{
+		Request: Request{
 			WorkingDir:   s.tempDir,
 			DockerSocket: DockerSocket,
 			Debug:        true,
@@ -104,15 +103,15 @@ func (s *IntegrationTestSuite) TestValidateExtendedSuccess(c *C) {
 			RuntimeImage: FakeBaseImage,
 		},
 	}
-	resp, err := sti.Validate(req)
+	resp, err := Validate(req)
 	c.Assert(err, IsNil, Commentf("Validation failed: err"))
 	c.Assert(resp.Valid, Equals, true, Commentf("Validation failed: invalid response"))
 }
 
 // Test an extended validation with a broken runtime image
 func (s *IntegrationTestSuite) TestValidateExtendedFailure(c *C) {
-	req := sti.ValidateRequest{
-		Request: sti.Request{
+	req := ValidateRequest{
+		Request: Request{
 			WorkingDir:   s.tempDir,
 			DockerSocket: DockerSocket,
 			Debug:        true,
@@ -120,7 +119,7 @@ func (s *IntegrationTestSuite) TestValidateExtendedFailure(c *C) {
 			RuntimeImage: FakeBrokenBaseImage,
 		},
 	}
-	resp, err := sti.Validate(req)
+	resp, err := Validate(req)
 	c.Assert(err, IsNil, Commentf("Validation failed: err"))
 	c.Assert(resp.Valid, Equals, false, Commentf("Validation should have failed: invalid response"))
 }
@@ -128,8 +127,8 @@ func (s *IntegrationTestSuite) TestValidateExtendedFailure(c *C) {
 // Test a clean build.  The simplest case.
 func (s *IntegrationTestSuite) TestCleanBuild(c *C) {
 	tag := TagCleanBuild
-	req := sti.BuildRequest{
-		Request: sti.Request{
+	req := BuildRequest{
+		Request: Request{
 			WorkingDir:   s.tempDir,
 			DockerSocket: DockerSocket,
 			Debug:        true,
@@ -138,7 +137,7 @@ func (s *IntegrationTestSuite) TestCleanBuild(c *C) {
 		Tag:    tag,
 		Clean:  true,
 		Writer: os.Stdout}
-	resp, err := sti.Build(req)
+	resp, err := Build(req)
 	c.Assert(err, IsNil, Commentf("Sti build failed"))
 	c.Assert(resp.Success, Equals, true, Commentf("Sti build failed"))
 
@@ -155,8 +154,8 @@ func (s *IntegrationTestSuite) TestIncrementalBuild(c *C) {
 	}
 
 	tag := TagIncrementalBuild
-	req := sti.BuildRequest{
-		Request: sti.Request{
+	req := BuildRequest{
+		Request: Request{
 			WorkingDir:   s.tempDir,
 			DockerSocket: DockerSocket,
 			Debug:        true,
@@ -165,7 +164,7 @@ func (s *IntegrationTestSuite) TestIncrementalBuild(c *C) {
 		Tag:    tag,
 		Clean:  true,
 		Writer: os.Stdout}
-	resp, err := sti.Build(req)
+	resp, err := Build(req)
 	c.Assert(err, IsNil, Commentf("Sti build failed"))
 	c.Assert(resp.Success, Equals, true, Commentf("Sti build failed"))
 
@@ -174,7 +173,7 @@ func (s *IntegrationTestSuite) TestIncrementalBuild(c *C) {
 	req.WorkingDir = s.tempDir
 	req.Clean = false
 
-	resp, err = sti.Build(req)
+	resp, err = Build(req)
 	c.Assert(err, IsNil, Commentf("Sti build failed"))
 	c.Assert(resp.Success, Equals, true, Commentf("Sti build failed"))
 
@@ -187,8 +186,8 @@ func (s *IntegrationTestSuite) TestIncrementalBuild(c *C) {
 // Test an extended build.
 func (s *IntegrationTestSuite) TestCleanExtendedBuild(c *C) {
 	tag := TagIncrementalBuild
-	req := sti.BuildRequest{
-		Request: sti.Request{
+	req := BuildRequest{
+		Request: Request{
 			WorkingDir:   s.tempDir,
 			DockerSocket: DockerSocket,
 			Debug:        true,
@@ -198,7 +197,7 @@ func (s *IntegrationTestSuite) TestCleanExtendedBuild(c *C) {
 		Tag:    tag,
 		Clean:  true,
 		Writer: os.Stdout}
-	resp, err := sti.Build(req)
+	resp, err := Build(req)
 	c.Assert(err, IsNil, Commentf("Sti build failed"))
 	c.Assert(resp.Success, Equals, true, Commentf("Sti build failed"))
 
@@ -215,8 +214,8 @@ func (s *IntegrationTestSuite) TestIncrementalExtendedBuild(c *C) {
 	}
 
 	tag := TagIncrementalExtendedBuild
-	req := sti.BuildRequest{
-		Request: sti.Request{
+	req := BuildRequest{
+		Request: Request{
 			WorkingDir:   s.tempDir,
 			DockerSocket: DockerSocket,
 			Debug:        true,
@@ -226,7 +225,7 @@ func (s *IntegrationTestSuite) TestIncrementalExtendedBuild(c *C) {
 		Tag:    tag,
 		Clean:  true,
 		Writer: os.Stdout}
-	resp, err := sti.Build(req)
+	resp, err := Build(req)
 	c.Assert(err, IsNil, Commentf("Sti build failed"))
 	c.Assert(resp.Success, Equals, true, Commentf("Sti build failed"))
 
@@ -235,7 +234,7 @@ func (s *IntegrationTestSuite) TestIncrementalExtendedBuild(c *C) {
 	req.WorkingDir = s.tempDir
 	req.Clean = false
 
-	resp, err = sti.Build(req)
+	resp, err = Build(req)
 	c.Assert(err, IsNil, Commentf("Sti build failed"))
 	c.Assert(resp.Success, Equals, true, Commentf("Sti build failed"))
 
@@ -270,7 +269,7 @@ func (s *IntegrationTestSuite) removeContainer(cId string) {
 }
 
 func (s *IntegrationTestSuite) checkFileExists(c *C, cId string, filePath string) {
-	res := sti.FileExistsInContainer(s.dockerClient, cId, filePath)
+	res := FileExistsInContainer(s.dockerClient, cId, filePath)
 
 	c.Assert(res, Equals, true, Commentf("Couldn't find file %s in container %s", filePath, cId))
 }
