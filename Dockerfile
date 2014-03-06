@@ -9,8 +9,8 @@ ADD     . /go/src/github.com/pmorie/go-sti
 WORKDIR   /go/src/github.com/pmorie/go-sti
 RUN \
    go get ./... && \
-   go build -o sti cli/sti.go && \
-   /bin/cp ./sti /bin/sti && \
+   go install github.com/pmorie/go-sti/sti && \
+   /bin/cp /go/bin/sti /bin/sti && \
    rm -rf $GOPATH
 
 CMD ["/bin/sti"]
