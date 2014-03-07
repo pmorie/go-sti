@@ -13,16 +13,12 @@ type ValidateRequest struct {
 	Incremental bool
 }
 
-// Describes the result of a validation.
-type ValidateResult struct {
-	Valid    bool
-	Messages []string
-}
+type ValidateResult STIResult
 
 // Records the result of a validation on a ValidationResult.
 func (res *ValidateResult) recordValidation(what string, image string, valid bool) {
 	if !valid {
-		res.Valid = false
+		res.Success = false
 		res.Messages = append(res.Messages, fmt.Sprintf("%s %s failed validation", what, image))
 	} else {
 		res.Messages = append(res.Messages, fmt.Sprintf("%s %s passes validation", what, image))
@@ -36,7 +32,7 @@ func Validate(req ValidateRequest) (*ValidateResult, error) {
 		return nil, err
 	}
 
-	result := &ValidateResult{Valid: true}
+	result := &ValidateResult{Success: true}
 
 	if req.RuntimeImage != "" {
 		valid, err := c.validateImage(req.BaseImage, false)

@@ -73,7 +73,7 @@ func (s *IntegrationTestSuite) TestValidateSuccess(c *C) {
 	}
 	resp, err := Validate(req)
 	c.Assert(err, IsNil, Commentf("Validation failed: err"))
-	c.Assert(resp.Valid, Equals, true, Commentf("Validation failed: invalid response"))
+	c.Assert(resp.Success, Equals, true, Commentf("Validation failed: invalid response"))
 }
 
 // Test a basic validation failure
@@ -89,7 +89,7 @@ func (s *IntegrationTestSuite) TestValidateFailure(c *C) {
 	}
 	resp, err := Validate(req)
 	c.Assert(err, IsNil, Commentf("Validation failed: err"))
-	c.Assert(resp.Valid, Equals, false, Commentf("Validation should have failed: invalid response"))
+	c.Assert(resp.Success, Equals, false, Commentf("Validation should have failed: invalid response"))
 }
 
 // Test an extended validation
@@ -105,7 +105,7 @@ func (s *IntegrationTestSuite) TestValidateExtendedSuccess(c *C) {
 	}
 	resp, err := Validate(req)
 	c.Assert(err, IsNil, Commentf("Validation failed: err"))
-	c.Assert(resp.Valid, Equals, true, Commentf("Validation failed: invalid response"))
+	c.Assert(resp.Success, Equals, true, Commentf("Validation failed: invalid response"))
 }
 
 // Test an extended validation with a broken runtime image
@@ -121,7 +121,7 @@ func (s *IntegrationTestSuite) TestValidateExtendedFailure(c *C) {
 	}
 	resp, err := Validate(req)
 	c.Assert(err, IsNil, Commentf("Validation failed: err"))
-	c.Assert(resp.Valid, Equals, false, Commentf("Validation should have failed: invalid response"))
+	c.Assert(resp.Success, Equals, false, Commentf("Validation should have failed: invalid response"))
 }
 
 // Test a clean build.  The simplest case.

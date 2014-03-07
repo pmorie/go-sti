@@ -23,10 +23,7 @@ type BuildRequest struct {
 	Writer      io.Writer
 }
 
-type BuildResult struct {
-	Success  bool
-	Messages []string
-}
+type BuildResult STIResult
 
 // Build processes a BuildRequest and returns a *BuildResult and an error.
 // An error represents a failure performing the build rather than a failure
