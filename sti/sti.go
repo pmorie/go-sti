@@ -3,6 +3,7 @@ package main
 import (
 	_ "net/http/pprof"
 
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -17,12 +18,16 @@ func parseEnvs(envStr string) (map[string]string, error) {
 		return nil, nil
 	}
 
-	// TODO: error handling
 	var envs map[string]string
 	pairs := strings.Split(envStr, ",")
 
 	for _, pair := range pairs {
 		atoms := strings.Split(pair, "=")
+
+		if len(atoms) != 2 {
+			return nil, errors.New("Malformed env string: " + pair)
+		}
+
 		name := atoms[0]
 		value := atoms[1]
 

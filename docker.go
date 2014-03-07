@@ -24,6 +24,11 @@ type requestHandler struct {
 	debug        bool
 }
 
+type STIResult struct {
+	Success  bool
+	Messages []string
+}
+
 // Returns a new handler for a given request.
 func newHandler(req Request) (*requestHandler, error) {
 	if req.Debug {
