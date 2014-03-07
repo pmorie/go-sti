@@ -12,13 +12,13 @@ import (
 	"github.com/smarterclayton/cobra"
 )
 
-func parseEnvs(envStr string) ([]sti.Env, error) {
+func parseEnvs(envStr string) (map[string]string, error) {
 	if envStr == "" {
 		return nil, nil
 	}
 
 	// TODO: error handling
-	var envs []sti.Env
+	var envs map[string]string
 	pairs := strings.Split(envStr, ",")
 
 	for _, pair := range pairs {
@@ -26,8 +26,7 @@ func parseEnvs(envStr string) ([]sti.Env, error) {
 		name := atoms[0]
 		value := atoms[1]
 
-		env := sti.Env{name, value}
-		envs = append(envs, env)
+		envs[name] = value
 	}
 
 	return envs, nil
@@ -51,11 +50,10 @@ func Execute() {
 		},
 	}
 	stiCmd.PersistentFlags().StringVarP(&(req.DockerSocket), "url", "U", "unix:///var/run/docker.sock", "Set the url of the docker socket to use")
-	stiCmd.PersistentFlags().IntVar(&(req.DockerTimeout), "timeout", 30, "Set the timeout for docker operations")
 	stiCmd.PersistentFlags().BoolVar(&(req.Debug), "debug", false, "Enable debugging output")
 
 	buildCmd := &cobra.Command{
-		Use:   "build SOURCE BASE_IMAGE TAG",
+		Use:   "build SOURCE BUILD_IMAGE APP_IMAGE_TAG",
 		Short: "Build an image",
 		Long:  "Build an image",
 		Run: func(cmd *cobra.Command, args []string) {
@@ -96,7 +94,7 @@ func Execute() {
 	stiCmd.AddCommand(buildCmd)
 
 	validateCmd := &cobra.Command{
-		Use:   "validate BASE_IMAGE",
+		Use:   "validate BUILD_IMAGE",
 		Short: "Validate an image",
 		Long:  "Validate an image and optional runtime image",
 		Run: func(cmd *cobra.Command, args []string) {
@@ -114,7 +112,7 @@ func Execute() {
 			}
 		},
 	}
-	validateCmd.Flags().StringVarP(&(req.RuntimeImage), "runtime-image", "R", "", "Set the runtime image to use")
+	validateCmd.Flags().StringVarP(&(req.RuntimeImage), "runtime", "R", "", "Set the runtime image to use")
 	validateCmd.Flags().BoolVarP(&(validateReq.Incremental), "incremental", "I", false, "Validate for an incremental build")
 	stiCmd.AddCommand(validateCmd)
 

@@ -14,17 +14,12 @@ import (
 	"github.com/fsouza/go-dockerclient"
 )
 
-type Env struct {
-	Name  string
-	Value string
-}
-
 type BuildRequest struct {
 	Request
 	Source      string
 	Tag         string
 	Clean       bool
-	Environment []Env
+	Environment map[string]string
 	Writer      io.Writer
 }
 
@@ -281,7 +276,7 @@ var dockerFileTemplate = template.Must(template.New("Dockerfile").Parse("" +
 	"FROM {{.BaseImage}}\n" +
 	"ADD ./src /usr/src\n" +
 	"{{if .Incremental}}ADD ./artifacts /usr/artifacts\n{{end}}" +
-	"{{range .Environment}}ENV {{.Name}} {{.Value}}\n{{end}}" +
+	"{{range $key, $value := .Environment}}ENV {{$key}} {{$value}}\n{{end}}" +
 	"RUN /usr/bin/prepare\n" +
 	"CMD /usr/bin/run\n"))
 
@@ -295,7 +290,7 @@ func (h requestHandler) buildDeployableImage(req BuildRequest, image string, con
 
 	templateFiller := struct {
 		BaseImage   string
-		Environment []Env
+		Environment map[string]string
 		Incremental bool
 	}{image, req.Environment, incremental}
 	err = dockerFileTemplate.Execute(dockerFile, templateFiller)
