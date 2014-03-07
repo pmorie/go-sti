@@ -101,38 +101,40 @@ runtime image. The workflow for extended builds is as follows:
 
 ### Getting started
 
+#### Dependencies
+
+1. [Docker](http://www.docker.io)
+1. [Go](http://golang.org/)
+
 #### Installation
 
 	go get github.com/pmorie/go-sti/sti
 
 #### Example
 
-You can start using sti right away by using the sample image and application sources in the
-`test_sources` directory.  Here's an example that builds a simple HTML app:
+You can start using sti right away with the following test sources and publicly available images:
 
-	docker build -rm -t fedora-mock test_sources/images/fedora-mock
-	sti build test_sources/applications/html fedora-mock sti_app
-	docker run -rm -i -p PORT:8080 -t sti_app
+    sti build git://github.com/pmorie/simple-ruby pmorie/centos-ruby2 test-ruby-app
+    docker run -rm -i -p :9292 -t test-ruby-app
+
+    sti build git://github.com/pmorie/simple-ruby pmorie/ubuntu-buildpack test-foreman-app \
+    -e 'BUILDPACK_URL=https://github.com/heroku/heroku-buildpack-ruby.git'
+    docker run -rm -i -p :5000 -t test-foreman-app
+
+    sti build git://github.com/pmorie/simple-html pmorie/fedora-mock test-html-app
+    docker run -rm -i -p :8080 -t sti_app
+
 
 ### Validating a source image
 
-    sti validate BUILD_IMAGE_TAG [--runtime-image=RUNTIME_IMAGE_TAG] [--incremental] [--url=URL]
-        [--timeout=TIMEOUT] [-l LOG_LEVEL]
+    sti validate BUILD_IMAGE_TAG [flags]
 
-    Arguments:
-        BUILD_IMAGE_TAG        Tag for the Docker image which provides the build and runtime for the application.
-        SOURCE_DIR             Directory or GIT repository containing your application sources.
-        APP_IMAGE_TAG          Tag for the Docker image which is created by STI. In the case of incremental
-                               builds, this tag is also used to identify the previous build of the application.
+    Available Flags:
+         --debug=false: Enable debugging output
+     -I, --incremental=false: Validate for an incremental build
+     -R, --runtime="": Set the runtime image to use
+     -U, --url="unix:///var/run/docker.sock": Set the url of the docker socket to use
 
-    Options:
-        --runtime-image=RUNTIME_IMAGE_TAG   Tag which identifies an optional Docker image with runtime components but
-                                            none of the build dependencies. If provided, the application will be built
-                                            with BUILD_IMAGE_TAG and the binaries will be extracted and installed on
-                                            the runtime image.
-        -l LOG_LEVEL                        Logging level. Default: INFO
-        --timeout=TIMEOUT                   Timeout commands if they take too long. Default: 120 seconds.
-        --url=URL                           Connect to docker at the specified url [default: unix://var/run/docker.sock]
 
 You can validate that an image is usable as a sti source image as follows:
 
@@ -142,41 +144,29 @@ The `--incremental` option to enables validation for incremental builds:
 
     sti validate BUILD_IMAGE_TAG --incremental
 
-Add the `--runtime-image` option to additionally validate a runtime image for extended builds:
+Add the `-R` option to additionally validate a runtime image for extended builds:
 
-    sti validate BUILD_IMAGE_TAG --runtime-image RUNTIME_IMAGE_TAG
+    sti validate BUILD_IMAGE_TAG -R RUNTIME_IMAGE_TAG
 
 When specifying a runtime image with `sti validate`, the build image is automatically validated for
 incremental builds.
 
 ### Building a deployable image with sti
 
-    sti build SOURCE_DIR BUILD_IMAGE_TAG APP_IMAGE_TAG [--runtime-image=RUNTIME_IMAGE_TAG] [--clean]
-        [--user=USERID] [--url=URL] [--timeout=TIMEOUT] [-e ENV_NAME=VALUE]... [-l LOG_LEVEL]
-        [--dir=WORKING_DIR] [--push]
+    sti build SOURCE BUILD_IMAGE APP_IMAGE_TAG [flags]
 
-    Arguments:
-        BUILD_IMAGE_TAG        Tag for the Docker image which provides the build and runtime for the application.
-        SOURCE_DIR             Directory or GIT repository containing your application sources.
-        APP_IMAGE_TAG          Tag for the Docker image which is created by STI. In the case of incremental
-                               builds, this tag is also used to identify the previous build of the application.
+    Available Flags:
+         --clean=false: Perform a clean build
+         --debug=false: Enable debugging output
+         --dir="tempdir": Directory where generated Dockerfiles and other support scripts are created
+     -e, --env="": Specify an environment var NAME=VALUE,NAME2=VALUE2,...
+     -R, --runtime="": Set the runtime image to use
+     -U, --url="unix:///var/run/docker.sock": Set the url of the docker socket to use
 
-    Options:
-        --runtime-image=RUNTIME_IMAGE_TAG   Tag which identifies an optional Docker image with runtime components but
-                                            none of the build dependencies. If provided, the application will be built
-                                            with BUILD_IMAGE_TAG and the binaries will be extracted and installed on
-                                            the runtime image.
-        --clean                             Do a clean build, ie. do not perform an incremental build.
-        --dir=WORKING_DIR                   Directory where Dockerfiles and other support scripts are created.
-                                            (Default: temp dir)
-        -l LOG_LEVEL                        Logging level. Default: INFO
-        --timeout=TIMEOUT                   Timeout commands if they take too long. Default: 120 seconds.
-        --user=USERID                       Perform the build as specified user.
-        --url=URL                           Connect to docker at the specified url [default: unix://var/run/docker.sock]
 
 The most basic `sti build` uses a single build image:
 
-    sti build SOURCE_DIR BUILD_IMAGE_TAG APP_IMAGE_TAG
+    sti build SOURCE BUILD_IMAGE_TAG APP_IMAGE_TAG
 
 If the build is successful, the built image will be tagged with `APP_IMAGE_TAG`.
 
@@ -187,12 +177,12 @@ artifacts from that image and add them to the build container at `/usr/artifacts
 
 When using an image that supports incremental builds, you can do a clean build with `--clean`:
 
-    sti build SOURCE_DIR BUILD_IMAGE_TAG APP_IMAGE_TAG --clean
+    sti build SOURCE BUILD_IMAGE_TAG APP_IMAGE_TAG --clean
 
 Extended builds allow you to use distinct images for building your sources and deploying them. Use
-the `--runtime-image` option perform an extended build targeting a runtime image:
+the `-R` option perform an extended build targeting a runtime image:
 
-    sti build SOURCE_DIR BUILD_IMAGE_TAG APP_IMAGE_TAG --runtime-image RUNTIME_IMAGE_TAG
+    sti build SOURCE BUILD_IMAGE_TAG APP_IMAGE_TAG -R RUNTIME_IMAGE_TAG
 
 When specifying a runtime image, the build image must be compatible with incremental builds.
 `sti build` will look for an image tagged with `<APP_IMAGE_TAG>-build`.  If an image is present with
@@ -211,4 +201,4 @@ successful, two images are tagged:
 
 You can do a clean extended build with `--clean`:
 
-    sti build SOURCE_DIR BUILD_IMAGE_TAG APP_IMAGE_TAG --runtime-image RUNTIME_IMAGE_TAG --clean
+    sti build SOURCE_DIR BUILD_IMAGE_TAG APP_IMAGE_TAG -R RUNTIME_IMAGE_TAG --clean
