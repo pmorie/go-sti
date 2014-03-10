@@ -25,6 +25,16 @@ func FileExistsInContainer(dockerClient *docker.Client, cId string, path string)
 	return ((err == nil) && ("" != content))
 }
 
+func stringInSlice(s string, slice []string) bool {
+	for _, element := range slice {
+		if s == element {
+			return true
+		}
+	}
+
+	return false
+}
+
 func writeTar(tw *tar.Writer, path string, relative string, fi os.FileInfo) error {
 	fr, err := os.Open(path)
 	if err != nil {

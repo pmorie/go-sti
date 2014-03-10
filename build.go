@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -20,6 +21,7 @@ type BuildRequest struct {
 	Tag         string
 	Clean       bool
 	Environment map[string]string
+	Method      string
 	Writer      io.Writer
 }
 
@@ -30,6 +32,15 @@ type BuildResult STIResult
 // of the build itself.  Callers should check the Success field of the result
 // to determine whether a build succeeded or not.
 func Build(req BuildRequest) (*BuildResult, error) {
+	method := req.Method
+	if method == "" {
+		req.Method = "build"
+	} else {
+		if !stringInSlice(method, []string{"run", "build"}) {
+			return nil, ErrInvalidBuildMethod
+		}
+	}
+
 	h, err := newHandler(req.Request)
 	if err != nil {
 		return nil, err
@@ -278,6 +289,14 @@ var dockerFileTemplate = template.Must(template.New("Dockerfile").Parse("" +
 	"CMD /usr/bin/run\n"))
 
 func (h requestHandler) buildDeployableImage(req BuildRequest, image string, contextDir string, incremental bool) (*BuildResult, error) {
+	if req.Method == "run" {
+		return h.buildDeployableImageWithDockerRun(req, image, contextDir, incremental)
+	}
+
+	return h.buildDeployableImageWithDockerBuild(req, image, contextDir, incremental)
+}
+
+func (h requestHandler) buildDeployableImageWithDockerBuild(req BuildRequest, image string, contextDir string, incremental bool) (*BuildResult, error) {
 	dockerFilePath := filepath.Join(contextDir, "Dockerfile")
 	dockerFile, err := openFileExclusive(dockerFilePath, 0700)
 	if err != nil {
@@ -331,4 +350,96 @@ func (h requestHandler) buildDeployableImage(req BuildRequest, image string, con
 	}
 
 	return &BuildResult{true, output}, nil
+}
+
+func (h requestHandler) buildDeployableImageWithDockerRun(req BuildRequest, image string, contextDir string, incremental bool) (*BuildResult, error) {
+	volumeMap := make(map[string]struct{})
+	volumeMap["/usr/src"] = struct{}{}
+	if incremental {
+		volumeMap["/usr/artifacts"] = struct{}{}
+	}
+
+	config := docker.Config{Image: image, Cmd: []string{"/usr/bin/prepare"}, Volumes: volumeMap}
+	var cmdEnv []string
+	if len(req.Environment) > 0 {
+		for key, val := range req.Environment {
+			cmdEnv = append(cmdEnv, key+"="+val)
+		}
+		config.Env = cmdEnv
+	}
+	if h.debug {
+		log.Printf("Creating container using config: %+v\n", config)
+	}
+
+	container, err := h.dockerClient.CreateContainer(docker.CreateContainerOptions{Name: "", Config: &config})
+	if err != nil {
+		return nil, err
+	}
+	defer h.removeContainer(container.ID)
+
+	binds := []string{
+		filepath.Join(contextDir, "src") + ":/usr/src",
+	}
+	if incremental {
+		binds = append(binds, filepath.Join(contextDir, "artifacts")+":/usr/artifacts")
+	}
+
+	hostConfig := docker.HostConfig{Binds: binds}
+	if h.debug {
+		log.Printf("Starting container with config: %+v\n", hostConfig)
+	}
+
+	err = h.dockerClient.StartContainer(container.ID, &hostConfig)
+	if err != nil {
+		return nil, err
+	}
+
+	exitCode, err := h.dockerClient.WaitContainer(container.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	if exitCode != 0 {
+		return nil, ErrBuildFailed
+	}
+
+	// config = docker.Config{Image: image, Cmd: []string{"/usr/bin/run"}, Env: cmdEnv}
+	// if h.debug {
+	// 	log.Printf("Commiting container with config: %+v\n", config)
+	// }
+
+	// builtImage, err := h.dockerClient.CommitContainer(docker.CommitContainerOptions{Container: container.ID, Repository: req.Tag, Run: &config})
+	// if err != nil {
+	// 	return nil, ErrBuildFailed
+	// }
+
+	// if h.debug {
+	// 	log.Printf("Built image: %+v\n", builtImage)
+	// }
+
+	// temporary hack to work around bug in go-dockerclient
+	err = h.commitContainerWithCli(container.ID, req.Tag, cmdEnv)
+	if err != nil {
+		return nil, err
+	}
+
+	return &BuildResult{true, nil}, nil
+}
+
+func (h requestHandler) commitContainerWithCli(id, tag string, env []string) error {
+	c := exec.Command("/usr/bin/docker", "commit", `-run={"Cmd": ["/usr/bin/run"]}`, id, tag)
+	var out, stdErr bytes.Buffer
+	c.Stdout = &out
+	c.Stderr = &stdErr
+
+	err := c.Run()
+	if h.debug {
+		log.Printf("Commit output: %s\n", out.String())
+		log.Printf("Commit stderr: %s\n", stdErr.String())
+	}
+	if err != nil {
+		return err
+	}
+
+	return nil
 }

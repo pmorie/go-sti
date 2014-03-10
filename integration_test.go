@@ -40,6 +40,11 @@ const (
 	TagIncrementalBuild         = "test/sti-incremental-app"
 	TagExtendedBuild            = "test/sti-extended-app"
 	TagIncrementalExtendedBuild = "test/sti-inc-ext-app"
+
+	TagCleanBuildRun               = "test/sti-fake-app-run"
+	TagIncrementalBuildRun         = "test/sti-incremental-app-run"
+	TagExtendedBuildRun            = "test/sti-extended-app-run"
+	TagIncrementalExtendedBuildRun = "test/sti-inc-ext-app-run"
 )
 
 // Suite/Test fixtures are provided by gocheck
@@ -51,6 +56,7 @@ func (s *IntegrationTestSuite) SetUpSuite(c *C) {
 	s.dockerClient, _ = docker.NewClient(DockerSocket)
 	for _, image := range []string{TagCleanBuild, TagIncrementalBuild, TagExtendedBuild, TagIncrementalExtendedBuild} {
 		s.dockerClient.RemoveImage(image)
+		s.dockerClient.RemoveImage(image + "-run")
 	}
 }
 
@@ -126,7 +132,14 @@ func (s *IntegrationTestSuite) TestValidateExtendedFailure(c *C) {
 
 // Test a clean build.  The simplest case.
 func (s *IntegrationTestSuite) TestCleanBuild(c *C) {
-	tag := TagCleanBuild
+	s.exerciseCleanBuild(c, TagCleanBuild, false)
+}
+
+func (s *IntegrationTestSuite) TestCleanBuildRun(c *C) {
+	s.exerciseCleanBuild(c, TagCleanBuildRun, true)
+}
+
+func (s *IntegrationTestSuite) exerciseCleanBuild(c *C, tag string, useRun bool) {
 	req := BuildRequest{
 		Request: Request{
 			WorkingDir:   s.tempDir,
@@ -137,6 +150,11 @@ func (s *IntegrationTestSuite) TestCleanBuild(c *C) {
 		Tag:    tag,
 		Clean:  true,
 		Writer: os.Stdout}
+
+	if useRun {
+		req.Method = "run"
+	}
+
 	resp, err := Build(req)
 	c.Assert(err, IsNil, Commentf("Sti build failed"))
 	c.Assert(resp.Success, Equals, true, Commentf("Sti build failed"))
@@ -149,11 +167,18 @@ func (s *IntegrationTestSuite) TestCleanBuild(c *C) {
 
 // Test an incremental build.
 func (s *IntegrationTestSuite) TestIncrementalBuild(c *C) {
+	s.exerciseIncrementalBuild(c, TagIncrementalBuild, false)
+}
+
+func (s *IntegrationTestSuite) TestIncrementalBuildRun(c *C) {
+	s.exerciseIncrementalBuild(c, TagIncrementalBuildRun, true)
+}
+
+func (s *IntegrationTestSuite) exerciseIncrementalBuild(c *C, tag string, useRun bool) {
 	if !*extended {
 		c.Skip("-extended not provided")
 	}
 
-	tag := TagIncrementalBuild
 	req := BuildRequest{
 		Request: Request{
 			WorkingDir:   s.tempDir,
@@ -164,6 +189,11 @@ func (s *IntegrationTestSuite) TestIncrementalBuild(c *C) {
 		Tag:    tag,
 		Clean:  true,
 		Writer: os.Stdout}
+
+	if useRun {
+		req.Method = "run"
+	}
+
 	resp, err := Build(req)
 	c.Assert(err, IsNil, Commentf("Sti build failed"))
 	c.Assert(resp.Success, Equals, true, Commentf("Sti build failed"))
@@ -185,7 +215,14 @@ func (s *IntegrationTestSuite) TestIncrementalBuild(c *C) {
 
 // Test an extended build.
 func (s *IntegrationTestSuite) TestCleanExtendedBuild(c *C) {
-	tag := TagIncrementalBuild
+	s.exerciseCleanExtendedBuild(c, TagExtendedBuild, false)
+}
+
+func (s *IntegrationTestSuite) TestCleanExtendedBuildRun(c *C) {
+	s.exerciseCleanExtendedBuild(c, TagExtendedBuildRun, true)
+}
+
+func (s *IntegrationTestSuite) exerciseCleanExtendedBuild(c *C, tag string, useRun bool) {
 	req := BuildRequest{
 		Request: Request{
 			WorkingDir:   s.tempDir,
@@ -197,6 +234,11 @@ func (s *IntegrationTestSuite) TestCleanExtendedBuild(c *C) {
 		Tag:    tag,
 		Clean:  true,
 		Writer: os.Stdout}
+
+	if useRun {
+		req.Method = "run"
+	}
+
 	resp, err := Build(req)
 	c.Assert(err, IsNil, Commentf("Sti build failed"))
 	c.Assert(resp.Success, Equals, true, Commentf("Sti build failed"))
@@ -209,11 +251,18 @@ func (s *IntegrationTestSuite) TestCleanExtendedBuild(c *C) {
 
 // Test an incremental extended build
 func (s *IntegrationTestSuite) TestIncrementalExtendedBuild(c *C) {
+	s.exerciseIncrementalExtendedBuild(c, TagIncrementalExtendedBuild, false)
+}
+
+func (s *IntegrationTestSuite) TestIncrementalExtendedBuildRun(c *C) {
+	s.exerciseIncrementalExtendedBuild(c, TagIncrementalExtendedBuildRun, false)
+}
+
+func (s *IntegrationTestSuite) exerciseIncrementalExtendedBuild(c *C, tag string, useRun bool) {
 	if !*extended {
 		c.Skip("-extended not provided")
 	}
 
-	tag := TagIncrementalExtendedBuild
 	req := BuildRequest{
 		Request: Request{
 			WorkingDir:   s.tempDir,
@@ -225,6 +274,11 @@ func (s *IntegrationTestSuite) TestIncrementalExtendedBuild(c *C) {
 		Tag:    tag,
 		Clean:  true,
 		Writer: os.Stdout}
+
+	if useRun {
+		req.Method = "run"
+	}
+
 	resp, err := Build(req)
 	c.Assert(err, IsNil, Commentf("Sti build failed"))
 	c.Assert(resp.Success, Equals, true, Commentf("Sti build failed"))
