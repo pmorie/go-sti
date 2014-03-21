@@ -86,6 +86,20 @@ func tarDirectory(dir string) (*os.File, error) {
 }
 
 func copy(sourcePath string, targetPath string) error {
+	info, err := os.Stat(sourcePath)
+	if err != nil {
+		return err
+	}
+
+	if !info.IsDir() {
+		err = os.Mkdir(targetPath, 0700)
+		if err != nil {
+			return err
+		}
+
+		targetPath = filepath.Join(targetPath, filepath.Base(sourcePath))
+	}
+
 	cmd := exec.Command("cp", "-ad", sourcePath, targetPath)
 	return cmd.Run()
 }
