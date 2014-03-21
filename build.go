@@ -282,7 +282,7 @@ func (h requestHandler) prepareSourceDir(source string, targetSourceDir string) 
 
 var dockerFileTemplate = template.Must(template.New("Dockerfile").Parse("" +
 	"FROM {{.BaseImage}}\n" +
-	"ADD ./src /usr/src\n" +
+	"ADD ./src /usr/src/\n" +
 	"{{if .Incremental}}ADD ./artifacts /usr/artifacts\n{{end}}" +
 	"{{range $key, $value := .Environment}}ENV {{$key}} {{$value}}\n{{end}}" +
 	"RUN /usr/bin/prepare\n" +
