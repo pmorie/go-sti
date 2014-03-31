@@ -166,14 +166,14 @@ func (h requestHandler) extendedBuild(req BuildRequest, incremental bool) (*Buil
 
 	// TODO: necessary to specify these, if specifying bind-mounts?
 	volumeMap := make(map[string]struct{})
-	volumeMap["/usr/artifacts"] = struct{}{}
-	volumeMap["/usr/src"] = struct{}{}
-	volumeMap["/usr/build"] = struct{}{}
+	volumeMap["/tmp/artifacts"] = struct{}{}
+	volumeMap["/tmp/src"] = struct{}{}
+	volumeMap["/tmp/build"] = struct{}{}
 
 	bindMounts := []string{
-		previousBuildVolume + ":/usr/artifacts",
-		inputSourceDir + ":/usr/src",
-		outputSourceDir + ":/usr/build",
+		previousBuildVolume + ":/tmp/artifacts",
+		inputSourceDir + ":/tmp/src",
+		outputSourceDir + ":/tmp/build",
 	}
 
 	if h.debug {
@@ -240,7 +240,7 @@ func (h requestHandler) saveArtifacts(image string, path string) error {
 	}
 	defer h.removeContainer(container.ID)
 
-	hostConfig := docker.HostConfig{Binds: []string{path + ":/usr/artifacts"}}
+	hostConfig := docker.HostConfig{Binds: []string{path + ":/tmp/artifacts"}}
 	err = h.dockerClient.StartContainer(container.ID, &hostConfig)
 	if err != nil {
 		return err
@@ -282,11 +282,14 @@ func (h requestHandler) prepareSourceDir(source string, targetSourceDir string) 
 
 var dockerFileTemplate = template.Must(template.New("Dockerfile").Parse("" +
 	"FROM {{.BaseImage}}\n" +
-	"ADD ./src /usr/src/\n" +
-	"{{if .Incremental}}ADD ./artifacts /usr/artifacts\n{{end}}" +
+	"{{if .User}}USER root\n{{end}}" +
+	"ADD ./src /tmp/src/\n" +
+	"{{if .User}}RUN chown {{.User}}:{{.User}} /tmp/src && chmod 755 /tmp/src\n{{end}}" +
+	"{{if .Incremental}}ADD ./artifacts /tmp/artifacts\n{{end}}" +
+	"{{if .User}}USER {{.User}}\n{{end}}" +
 	"{{range $key, $value := .Environment}}ENV {{$key}} {{$value}}\n{{end}}" +
 	"RUN /usr/bin/prepare\n" +
-	"CMD /usr/bin/run\n"))
+	"CMD [ \"/usr/bin/run\" ]\n"))
 
 func (h requestHandler) buildDeployableImage(req BuildRequest, image string, contextDir string, incremental bool) (*BuildResult, error) {
 	if req.Method == "run" {
@@ -304,11 +307,19 @@ func (h requestHandler) buildDeployableImageWithDockerBuild(req BuildRequest, im
 	}
 	defer dockerFile.Close()
 
+	imageMetadata, err := h.dockerClient.InspectImage(image)
+	if err != nil {
+		return nil, err
+	}
+
+	user := imageMetadata.ContainerConfig.User
+
 	templateFiller := struct {
 		BaseImage   string
 		Environment map[string]string
 		Incremental bool
-	}{image, req.Environment, incremental}
+		User        string
+	}{image, req.Environment, incremental, user}
 	err = dockerFileTemplate.Execute(dockerFile, templateFiller)
 	if err != nil {
 		return nil, ErrCreateDockerfileFailed
@@ -354,9 +365,9 @@ func (h requestHandler) buildDeployableImageWithDockerBuild(req BuildRequest, im
 
 func (h requestHandler) buildDeployableImageWithDockerRun(req BuildRequest, image string, contextDir string, incremental bool) (*BuildResult, error) {
 	volumeMap := make(map[string]struct{})
-	volumeMap["/usr/src"] = struct{}{}
+	volumeMap["/tmp/src"] = struct{}{}
 	if incremental {
-		volumeMap["/usr/artifacts"] = struct{}{}
+		volumeMap["/tmp/artifacts"] = struct{}{}
 	}
 
 	config := docker.Config{Image: image, Cmd: []string{"/usr/bin/prepare"}, Volumes: volumeMap}
@@ -378,10 +389,10 @@ func (h requestHandler) buildDeployableImageWithDockerRun(req BuildRequest, imag
 	defer h.removeContainer(container.ID)
 
 	binds := []string{
-		filepath.Join(contextDir, "src") + ":/usr/src",
+		filepath.Join(contextDir, "src") + ":/tmp/src",
 	}
 	if incremental {
-		binds = append(binds, filepath.Join(contextDir, "artifacts")+":/usr/artifacts")
+		binds = append(binds, filepath.Join(contextDir, "artifacts")+":/tmp/artifacts")
 	}
 
 	hostConfig := docker.HostConfig{Binds: binds}
