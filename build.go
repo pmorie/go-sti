@@ -92,6 +92,36 @@ func Build(req BuildRequest) (*BuildResult, error) {
 	return result, err
 }
 
+var saveArtifactsInitTemplate = template.Must(template.New("sa-init.sh").Parse(`#!/bin/bash
+chown {{.User}}:{{.User}} /tmp/artifacts && chmod 755 /tmp/artifacts
+exec su {{.User}} -s /bin/bash -c /usr/bin/save-artifacts
+`))
+
+// var extendedBuildTemplate = template.Must(template.New("ex-build-init.sh").Parse(`#!/bin/bash
+// chown {{.User}}:{{.User}} /tmp/src && chmod 755 /tmp/src
+// chown {{.User}}:{{.User}} /tmp/artifacts && chmod 755 /tmp/artifacts
+// chown {{.User}}:{{.User}} /tmp/build && chmod 755 /tmp/build
+// exec su {{.User}} -s /bin/bash -c /usr/bin/prepare
+// `))
+
+var buildTemplate = template.Must(template.New("build-init.sh").Parse(`#!/bin/bash
+chown {{.User}}:{{.User}} /tmp/src && chmod 755 /tmp/src
+chown {{.User}}:{{.User}} /tmp/artifacts && chmod 755 /tmp/artifacts
+exec su {{.User}} -s /bin/bash -c /usr/bin/prepare
+`))
+
+var dockerFileTemplate = template.Must(template.New("Dockerfile").Parse(`
+FROM {{.BaseImage}}
+{{if .User}}USER root{{end}}
+ADD ./src /tmp/src/
+{{if .User}}RUN chown -R {{.User}}:{{.User}} /tmp/src && chmod -R 755 /tmp/src{{end}}
+{{if .Incremental}}ADD ./artifacts /tmp/artifacts{{end}}
+{{if .User}}USER {{.User}}{{end}}
+{{range $key, $value := .Environment}}ENV {{$key}} {{$value}}{{end}}
+RUN /usr/bin/prepare
+CMD [ "/usr/bin/run" ]
+`))
+
 func (h requestHandler) detectIncrementalBuild(tag string) (bool, error) {
 	if h.debug {
 		log.Printf("Determining whether image %s is compatible with incremental build", tag)
@@ -111,13 +141,19 @@ func (h requestHandler) build(req BuildRequest, incremental bool) (*BuildResult,
 		log.Printf("Performing source build from %s\n", req.Source)
 	}
 	if incremental {
-		artifactTmpDir := filepath.Join(req.WorkingDir, "artifacts")
-		err := os.Mkdir(artifactTmpDir, 0700)
+		workingTmpDir := filepath.Join(req.WorkingDir, "tmp")
+		err := os.Mkdir(workingTmpDir, 0700)
 		if err != nil {
 			return nil, err
 		}
 
-		err = h.saveArtifacts(req.Tag, artifactTmpDir)
+		artifactTmpDir := filepath.Join(req.WorkingDir, "artifacts")
+		err = os.Mkdir(artifactTmpDir, 0700)
+		if err != nil {
+			return nil, err
+		}
+
+		err = h.saveArtifacts(req.Tag, workingTmpDir, artifactTmpDir)
 		if err != nil {
 			return nil, err
 		}
@@ -137,6 +173,8 @@ func (h requestHandler) extendedBuild(req BuildRequest, incremental bool) (*Buil
 		buildImageTag = req.Tag + "-build"
 		wd            = req.WorkingDir
 
+		tmpDir = filepath.Join(wd, "tmp")
+
 		builderBuildDir     = filepath.Join(wd, "build")
 		previousBuildVolume = filepath.Join(builderBuildDir, "last_build_artifacts")
 		inputSourceDir      = filepath.Join(builderBuildDir, "src")
@@ -145,7 +183,7 @@ func (h requestHandler) extendedBuild(req BuildRequest, incremental bool) (*Buil
 		outputSourceDir = filepath.Join(runtimeBuildDir, "src")
 	)
 
-	for _, dir := range []string{builderBuildDir, runtimeBuildDir, previousBuildVolume, outputSourceDir} {
+	for _, dir := range []string{tmpDir, builderBuildDir, runtimeBuildDir, previousBuildVolume, outputSourceDir} {
 		err := os.Mkdir(dir, 0700)
 		if err != nil {
 			return nil, err
@@ -153,7 +191,7 @@ func (h requestHandler) extendedBuild(req BuildRequest, incremental bool) (*Buil
 	}
 
 	if incremental {
-		err := h.saveArtifacts(buildImageTag, previousBuildVolume)
+		err := h.saveArtifacts(buildImageTag, tmpDir, previousBuildVolume)
 		if err != nil {
 			return nil, err
 		}
@@ -225,25 +263,80 @@ func (h requestHandler) extendedBuild(req BuildRequest, incremental bool) (*Buil
 	return buildResult, nil
 }
 
-func (h requestHandler) saveArtifacts(image string, path string) error {
+func (h requestHandler) saveArtifacts(image string, tmpDir string, path string) error {
 	if h.debug {
 		log.Printf("Saving build artifacts from image %s to path %s\n", image, path)
 	}
 
-	volumeMap := make(map[string]struct{})
-	volumeMap["/usr/artifacts"] = struct{}{}
+	imageMetadata, err := h.dockerClient.InspectImage(image)
+	if err != nil {
+		return err
+	}
 
-	config := docker.Config{Image: image, Cmd: []string{"/usr/bin/save-artifacts"}, Volumes: volumeMap}
+	user := imageMetadata.ContainerConfig.User
+	hasUser := (user != "")
+
+	volumeMap := make(map[string]struct{})
+	volumeMap["/tmp/artifacts"] = struct{}{}
+	cmd := []string{"/usr/bin/save-artifacts"}
+
+	if hasUser {
+		cmd = []string{"/save-artifacts-init.sh"}
+	}
+
+	config := docker.Config{Image: image, Cmd: cmd, Volumes: volumeMap}
 	container, err := h.dockerClient.CreateContainer(docker.CreateContainerOptions{Name: "", Config: &config})
 	if err != nil {
 		return err
 	}
 	defer h.removeContainer(container.ID)
 
-	hostConfig := docker.HostConfig{Binds: []string{path + ":/tmp/artifacts"}}
+	binds := []string{path + ":/tmp/artifacts"}
+	if hasUser {
+		// TODO: add custom errors?
+		initScriptPath := filepath.Join(tmpDir, "/save-artifacts-init.sh")
+		initScript, err := openFileExclusive(initScriptPath, 0700)
+		if err != nil {
+			return err
+		}
+		defer initScript.Close()
+
+		if h.debug {
+			log.Printf("Generating init script")
+		}
+
+		err = saveArtifactsInitTemplate.Execute(initScript, struct{ User string }{user})
+		if err != nil {
+			return err
+		}
+
+		if h.debug {
+			log.Printf("Updating bind mounts")
+		}
+
+		binds = append(binds, initScriptPath+":/save-artifacts-init.sh")
+	}
+
+	// TODO: handle passing back to client correctly
+	if h.debug {
+		log.Printf("Using bind mounts: %+v", binds)
+	}
+
+	hostConfig := docker.HostConfig{Binds: binds}
 	err = h.dockerClient.StartContainer(container.ID, &hostConfig)
 	if err != nil {
 		return err
+	}
+
+	attachOpts := docker.AttachToContainerOptions{Container: container.ID, OutputStream: os.Stdout,
+		ErrorStream: os.Stdout, Stream: true, Stdout: true, Stderr: true}
+	err = h.dockerClient.AttachToContainer(attachOpts)
+	if err != nil {
+		log.Printf("Couldn't attach to container")
+	}
+
+	if h.debug {
+		log.Printf("Waiting for save-artifacts script to run")
 	}
 
 	exitCode, err := h.dockerClient.WaitContainer(container.ID)
@@ -252,6 +345,9 @@ func (h requestHandler) saveArtifacts(image string, path string) error {
 	}
 
 	if exitCode != 0 {
+		if h.debug {
+			log.Printf("Exit code: %d", exitCode)
+		}
 		return ErrSaveArtifactsFailed
 	}
 
@@ -279,17 +375,6 @@ func (h requestHandler) prepareSourceDir(source string, targetSourceDir string) 
 
 	return nil
 }
-
-var dockerFileTemplate = template.Must(template.New("Dockerfile").Parse("" +
-	"FROM {{.BaseImage}}\n" +
-	"{{if .User}}USER root\n{{end}}" +
-	"ADD ./src /tmp/src/\n" +
-	"{{if .User}}RUN chown {{.User}}:{{.User}} /tmp/src && chmod 755 /tmp/src\n{{end}}" +
-	"{{if .Incremental}}ADD ./artifacts /tmp/artifacts\n{{end}}" +
-	"{{if .User}}USER {{.User}}\n{{end}}" +
-	"{{range $key, $value := .Environment}}ENV {{$key}} {{$value}}\n{{end}}" +
-	"RUN /usr/bin/prepare\n" +
-	"CMD [ \"/usr/bin/run\" ]\n"))
 
 func (h requestHandler) buildDeployableImage(req BuildRequest, image string, contextDir string, incremental bool) (*BuildResult, error) {
 	if req.Method == "run" {
@@ -370,7 +455,20 @@ func (h requestHandler) buildDeployableImageWithDockerRun(req BuildRequest, imag
 		volumeMap["/tmp/artifacts"] = struct{}{}
 	}
 
-	config := docker.Config{Image: image, Cmd: []string{"/usr/bin/prepare"}, Volumes: volumeMap}
+	imageMetadata, err := h.dockerClient.InspectImage(image)
+	if err != nil {
+		return nil, err
+	}
+
+	user := imageMetadata.ContainerConfig.User
+	hasUser := (user != "")
+
+	cmd := []string{"/usr/bin/prepare"}
+	if hasUser {
+		cmd = []string{"/build-init.sh"}
+	}
+
+	config := docker.Config{Image: image, Cmd: cmd, Volumes: volumeMap}
 	var cmdEnv []string
 	if len(req.Environment) > 0 {
 		for key, val := range req.Environment {
@@ -393,6 +491,21 @@ func (h requestHandler) buildDeployableImageWithDockerRun(req BuildRequest, imag
 	}
 	if incremental {
 		binds = append(binds, filepath.Join(contextDir, "artifacts")+":/tmp/artifacts")
+	}
+	if hasUser {
+		buildScriptPath := filepath.Join(contextDir, "tmp", "build-init.sh")
+		buildScript, err := openFileExclusive(buildScriptPath, 0700)
+		if err != nil {
+			return nil, err
+		}
+		defer buildScript.Close()
+
+		err = buildTemplate.Execute(buildScript, struct{ User string }{user})
+		if err != nil {
+			return nil, err
+		}
+
+		binds = append(binds, buildScriptPath+":/build-init.sh")
 	}
 
 	hostConfig := docker.HostConfig{Binds: binds}
