@@ -93,7 +93,9 @@ func Build(req BuildRequest) (*BuildResult, error) {
 }
 
 var saveArtifactsInitTemplate = template.Must(template.New("sa-init.sh").Parse(`#!/bin/bash
-chown {{.User}}:{{.User}} /tmp/artifacts && chmod 755 /tmp/artifacts
+echo ".container.init: Initializing permissions for user {{.User}}"
+chown -R {{.User}}:{{.User}} /tmp/artifacts && chmod -R 755 /tmp/artifacts
+echo ".container.init: Executing save-artifacts script"
 exec su {{.User}} -s /bin/bash -c /usr/bin/save-artifacts
 `))
 
@@ -105,8 +107,8 @@ exec su {{.User}} -s /bin/bash -c /usr/bin/save-artifacts
 // `))
 
 var buildTemplate = template.Must(template.New("build-init.sh").Parse(`#!/bin/bash
-chown {{.User}}:{{.User}} /tmp/src && chmod 755 /tmp/src
-chown {{.User}}:{{.User}} /tmp/artifacts && chmod 755 /tmp/artifacts
+chown -R {{.User}}:{{.User}} /tmp/src && chmod -R 755 /tmp/src
+chown -R {{.User}}:{{.User}} /tmp/artifacts && chmod -R 755 /tmp/artifacts
 exec su {{.User}} -s /bin/bash -c /usr/bin/prepare
 `))
 
@@ -281,10 +283,10 @@ func (h requestHandler) saveArtifacts(image string, tmpDir string, path string) 
 	cmd := []string{"/usr/bin/save-artifacts"}
 
 	if hasUser {
-		cmd = []string{"/bin/bash", "-c", "ls", "-l", "/", "&&", "/save-artifacts-init.sh"}
+		cmd = []string{"/bin/bash", "-c", "whoami && ls -la / && ls -la /tmp/sti-bin && /sti-bin/save-artifacts-init.sh"}
 	}
 
-	config := docker.Config{Image: image, Cmd: cmd, Volumes: volumeMap}
+	config := docker.Config{User: "root", Image: image, Cmd: cmd, Volumes: volumeMap}
 	container, err := h.dockerClient.CreateContainer(docker.CreateContainerOptions{Name: "", Config: &config})
 	if err != nil {
 		return err
@@ -294,32 +296,30 @@ func (h requestHandler) saveArtifacts(image string, tmpDir string, path string) 
 	binds := []string{path + ":/tmp/artifacts"}
 	if hasUser {
 		// TODO: add custom errors?
-		initScriptPath := filepath.Join(tmpDir, "/save-artifacts-init.sh")
-		initScript, err := openFileExclusive(initScriptPath, 0700)
+		stubFile, err := openFileExclusive(filepath.Join(path, ".stub"), 0666)
+		if err != nil {
+			return err
+		}
+		defer stubFile.Close()
+
+		initScriptPath := filepath.Join(tmpDir, "save-artifacts-init.sh")
+		initScript, err := openFileExclusive(initScriptPath, 0755)
 		if err != nil {
 			return err
 		}
 		defer initScript.Close()
-
-		if h.debug {
-			log.Printf("Generating init script")
-		}
 
 		err = saveArtifactsInitTemplate.Execute(initScript, struct{ User string }{user})
 		if err != nil {
 			return err
 		}
 
-		if h.debug {
-			log.Printf("Updating bind mounts")
-		}
-
-		binds = append(binds, initScriptPath+":/save-artifacts-init.sh")
+		binds = append(binds, tmpDir+":/tmp/sti-bin")
 	}
 
 	// TODO: handle passing back to client correctly
 	if h.debug {
-		log.Printf("Using bind mounts: %+v", binds)
+		log.Printf("Starting save-artifacts container %s using bind mounts: %+v", container.ID, binds)
 	}
 
 	hostConfig := docker.HostConfig{Binds: binds}
@@ -329,7 +329,7 @@ func (h requestHandler) saveArtifacts(image string, tmpDir string, path string) 
 	}
 
 	attachOpts := docker.AttachToContainerOptions{Container: container.ID, OutputStream: os.Stdout,
-		ErrorStream: os.Stdout, Stream: true, Stdout: true, Stderr: true}
+		ErrorStream: os.Stdout, Stream: true, Stdout: true, Stderr: true, Logs: true}
 	err = h.dockerClient.AttachToContainer(attachOpts)
 	if err != nil {
 		log.Printf("Couldn't attach to container")
