@@ -281,7 +281,7 @@ func (h requestHandler) saveArtifacts(image string, tmpDir string, path string) 
 	cmd := []string{"/usr/bin/save-artifacts"}
 
 	if hasUser {
-		cmd = []string{"/save-artifacts-init.sh"}
+		cmd = []string{"/bin/bash", "-c", "ls", "-l", "/", "&&", "/save-artifacts-init.sh"}
 	}
 
 	config := docker.Config{Image: image, Cmd: cmd, Volumes: volumeMap}
