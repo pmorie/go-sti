@@ -92,6 +92,7 @@ func Build(req BuildRequest) (*BuildResult, error) {
 	return result, err
 }
 
+// Script used to initialize permissions on bind-mounts when a non-root user is specified by an image
 var saveArtifactsInitTemplate = template.Must(template.New("sa-init.sh").Parse(`#!/bin/bash
 echo ".container.init: Initializing permissions for user {{.User}}"
 chown -R {{.User}}:{{.User}} /tmp/artifacts && chmod -R 755 /tmp/artifacts
@@ -106,6 +107,7 @@ exec su {{.User}} -s /bin/bash -c /usr/bin/save-artifacts
 // exec su {{.User}} -s /bin/bash -c /usr/bin/prepare
 // `))
 
+// Script used to initialize permissions on bind-mounts for a docker-run build (prepare call)
 var buildTemplate = template.Must(template.New("build-init.sh").Parse(`#!/bin/bash
 chown -R {{.User}}:{{.User}} /tmp/src && chmod -R 755 /tmp/src
 chown -R {{.User}}:{{.User}} /tmp/artifacts && chmod -R 755 /tmp/artifacts
@@ -118,6 +120,7 @@ FROM {{.BaseImage}}
 ADD ./src /tmp/src/
 {{if .User}}RUN chown -R {{.User}}:{{.User}} /tmp/src && chmod -R 755 /tmp/src{{end}}
 {{if .Incremental}}ADD ./artifacts /tmp/artifacts{{end}}
+{{if .User}}RUN chown -R {{.User}}:{{.User}} /tmp/artifacts && chmod -R 755 /tmp/artifacts{{end}}
 {{if .User}}USER {{.User}}{{end}}
 {{range $key, $value := .Environment}}ENV {{$key}} {{$value}}{{end}}
 RUN /usr/bin/prepare
@@ -280,10 +283,13 @@ func (h requestHandler) saveArtifacts(image string, tmpDir string, path string) 
 
 	volumeMap := make(map[string]struct{})
 	volumeMap["/tmp/artifacts"] = struct{}{}
+	if hasUser {
+		volumeMap["/tmp/sti-bin"] = struct{}{}
+	}
 	cmd := []string{"/usr/bin/save-artifacts"}
 
 	if hasUser {
-		cmd = []string{"/bin/bash", "-c", "whoami && ls -la / && ls -la /tmp/sti-bin && /sti-bin/save-artifacts-init.sh"}
+		cmd = []string{"/bin/bash", "-c", "whoami && ls -la / && ls -la /tmp && ls -la /tmp/sti-bin && /tmp/sti-bin/save-artifacts-init.sh"}
 	}
 
 	config := docker.Config{User: "root", Image: image, Cmd: cmd, Volumes: volumeMap}
@@ -303,16 +309,16 @@ func (h requestHandler) saveArtifacts(image string, tmpDir string, path string) 
 		defer stubFile.Close()
 
 		initScriptPath := filepath.Join(tmpDir, "save-artifacts-init.sh")
-		initScript, err := openFileExclusive(initScriptPath, 0755)
+		initScript, err := openFileExclusive(initScriptPath, 0766)
 		if err != nil {
 			return err
 		}
-		defer initScript.Close()
 
 		err = saveArtifactsInitTemplate.Execute(initScript, struct{ User string }{user})
 		if err != nil {
 			return err
 		}
+		initScript.Close()
 
 		binds = append(binds, tmpDir+":/tmp/sti-bin")
 	}
