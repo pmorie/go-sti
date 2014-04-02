@@ -284,12 +284,12 @@ func (h requestHandler) saveArtifacts(image string, tmpDir string, path string) 
 	volumeMap := make(map[string]struct{})
 	volumeMap["/tmp/artifacts"] = struct{}{}
 	if hasUser {
-		volumeMap["/tmp/sti-bin"] = struct{}{}
+		volumeMap["/.container.init"] = struct{}{}
 	}
 	cmd := []string{"/usr/bin/save-artifacts"}
 
 	if hasUser {
-		cmd = []string{"/bin/bash", "-c", "whoami && ls -la / && ls -la /tmp && ls -la /tmp/sti-bin && /tmp/sti-bin/save-artifacts-init.sh"}
+		cmd = []string{"/bin/bash", "-c", "whoami && ls -la / && /.container.init"}
 	}
 
 	config := docker.Config{User: "root", Image: image, Cmd: cmd, Volumes: volumeMap}
@@ -320,7 +320,7 @@ func (h requestHandler) saveArtifacts(image string, tmpDir string, path string) 
 		}
 		initScript.Close()
 
-		binds = append(binds, tmpDir+":/tmp/sti-bin")
+		binds = append(binds, initScriptPath+":/.container.init")
 	}
 
 	// TODO: handle passing back to client correctly
@@ -341,6 +341,7 @@ func (h requestHandler) saveArtifacts(image string, tmpDir string, path string) 
 		log.Printf("Couldn't attach to container")
 	}
 
+	// TODO: use channel w/ attach
 	if h.debug {
 		log.Printf("Waiting for save-artifacts script to run")
 	}
