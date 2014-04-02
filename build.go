@@ -336,11 +336,6 @@ func (h requestHandler) saveArtifacts(image string, tmpDir string, path string) 
 		log.Printf("Couldn't attach to container")
 	}
 
-	// TODO: use channel w/ attach
-	if h.debug {
-		log.Printf("Waiting for save-artifacts script to run")
-	}
-
 	exitCode, err := h.dockerClient.WaitContainer(container.ID)
 	if err != nil {
 		return err
