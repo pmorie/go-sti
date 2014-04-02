@@ -94,9 +94,7 @@ func Build(req BuildRequest) (*BuildResult, error) {
 
 // Script used to initialize permissions on bind-mounts when a non-root user is specified by an image
 var saveArtifactsInitTemplate = template.Must(template.New("sa-init.sh").Parse(`#!/bin/bash
-echo ".container.init: Initializing permissions for user {{.User}}"
 chown -R {{.User}}:{{.User}} /tmp/artifacts && chmod -R 755 /tmp/artifacts
-echo ".container.init: Executing save-artifacts script"
 exec su {{.User}} -s /bin/bash -c /usr/bin/save-artifacts
 `))
 
@@ -110,7 +108,7 @@ exec su {{.User}} -s /bin/bash -c /usr/bin/save-artifacts
 // Script used to initialize permissions on bind-mounts for a docker-run build (prepare call)
 var buildTemplate = template.Must(template.New("build-init.sh").Parse(`#!/bin/bash
 chown -R {{.User}}:{{.User}} /tmp/src && chmod -R 755 /tmp/src
-chown -R {{.User}}:{{.User}} /tmp/artifacts && chmod -R 755 /tmp/artifacts
+{{if .Incremental}}chown -R {{.User}}:{{.User}} /tmp/artifacts && chmod -R 755 /tmp/artifacts{{end}}
 exec su {{.User}} -s /bin/bash -c /usr/bin/prepare
 `))
 
@@ -119,8 +117,10 @@ FROM {{.BaseImage}}
 {{if .User}}USER root{{end}}
 ADD ./src /tmp/src/
 {{if .User}}RUN chown -R {{.User}}:{{.User}} /tmp/src && chmod -R 755 /tmp/src{{end}}
-{{if .Incremental}}ADD ./artifacts /tmp/artifacts{{end}}
+{{if .Incremental}}
+ADD ./artifacts /tmp/artifacts
 {{if .User}}RUN chown -R {{.User}}:{{.User}} /tmp/artifacts && chmod -R 755 /tmp/artifacts{{end}}
+{{end}}
 {{if .User}}USER {{.User}}{{end}}
 {{range $key, $value := .Environment}}ENV {{$key}} {{$value}}{{end}}
 RUN /usr/bin/prepare
@@ -145,12 +145,14 @@ func (h requestHandler) build(req BuildRequest, incremental bool) (*BuildResult,
 	if h.debug {
 		log.Printf("Performing source build from %s\n", req.Source)
 	}
+
+	workingTmpDir := filepath.Join(req.WorkingDir, "tmp")
+	err := os.Mkdir(workingTmpDir, 0700)
+	if err != nil {
+		return nil, err
+	}
+
 	if incremental {
-		workingTmpDir := filepath.Join(req.WorkingDir, "tmp")
-		err := os.Mkdir(workingTmpDir, 0700)
-		if err != nil {
-			return nil, err
-		}
 
 		artifactTmpDir := filepath.Join(req.WorkingDir, "artifacts")
 		err = os.Mkdir(artifactTmpDir, 0700)
@@ -165,7 +167,7 @@ func (h requestHandler) build(req BuildRequest, incremental bool) (*BuildResult,
 	}
 
 	targetSourceDir := filepath.Join(req.WorkingDir, "src")
-	err := h.prepareSourceDir(req.Source, targetSourceDir)
+	err = h.prepareSourceDir(req.Source, targetSourceDir)
 	if err != nil {
 		return nil, err
 	}
@@ -283,13 +285,11 @@ func (h requestHandler) saveArtifacts(image string, tmpDir string, path string) 
 
 	volumeMap := make(map[string]struct{})
 	volumeMap["/tmp/artifacts"] = struct{}{}
-	if hasUser {
-		volumeMap["/.container.init"] = struct{}{}
-	}
 	cmd := []string{"/usr/bin/save-artifacts"}
 
 	if hasUser {
-		cmd = []string{"/bin/bash", "-c", "whoami && ls -la / && /.container.init"}
+		volumeMap["/.container.init"] = struct{}{}
+		cmd = []string{"/.container.init"}
 	}
 
 	config := docker.Config{User: "root", Image: image, Cmd: cmd, Volumes: volumeMap}
@@ -321,11 +321,6 @@ func (h requestHandler) saveArtifacts(image string, tmpDir string, path string) 
 		initScript.Close()
 
 		binds = append(binds, initScriptPath+":/.container.init")
-	}
-
-	// TODO: handle passing back to client correctly
-	if h.debug {
-		log.Printf("Starting save-artifacts container %s using bind mounts: %+v", container.ID, binds)
 	}
 
 	hostConfig := docker.HostConfig{Binds: binds}
@@ -476,7 +471,7 @@ func (h requestHandler) buildDeployableImageWithDockerRun(req BuildRequest, imag
 		volumeMap["/.container.init"] = struct{}{}
 	}
 
-	config := docker.Config{Image: image, Cmd: cmd, Volumes: volumeMap}
+	config := docker.Config{User: "root", Image: image, Cmd: cmd, Volumes: volumeMap}
 	var cmdEnv []string
 	if len(req.Environment) > 0 {
 		for key, val := range req.Environment {
@@ -507,7 +502,12 @@ func (h requestHandler) buildDeployableImageWithDockerRun(req BuildRequest, imag
 			return nil, err
 		}
 
-		err = buildTemplate.Execute(buildScript, struct{ User string }{user})
+		templateFiller := struct {
+			User        string
+			Incremental bool
+		}{user, incremental}
+
+		err = buildTemplate.Execute(buildScript, templateFiller)
 		if err != nil {
 			return nil, err
 		}
@@ -524,6 +524,13 @@ func (h requestHandler) buildDeployableImageWithDockerRun(req BuildRequest, imag
 	err = h.dockerClient.StartContainer(container.ID, &hostConfig)
 	if err != nil {
 		return nil, err
+	}
+
+	attachOpts := docker.AttachToContainerOptions{Container: container.ID, OutputStream: os.Stdout,
+		ErrorStream: os.Stdout, Stream: true, Stdout: true, Stderr: true, Logs: true}
+	err = h.dockerClient.AttachToContainer(attachOpts)
+	if err != nil {
+		log.Printf("Couldn't attach to container")
 	}
 
 	exitCode, err := h.dockerClient.WaitContainer(container.ID)
