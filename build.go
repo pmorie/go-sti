@@ -472,7 +472,8 @@ func (h requestHandler) buildDeployableImageWithDockerRun(req BuildRequest, imag
 
 	cmd := []string{"/usr/bin/prepare"}
 	if hasUser {
-		cmd = []string{"/build-init.sh"}
+		cmd = []string{"/.container.init"}
+		volumeMap["/.container.init"] = struct{}{}
 	}
 
 	config := docker.Config{Image: image, Cmd: cmd, Volumes: volumeMap}
@@ -500,19 +501,19 @@ func (h requestHandler) buildDeployableImageWithDockerRun(req BuildRequest, imag
 		binds = append(binds, filepath.Join(contextDir, "artifacts")+":/tmp/artifacts")
 	}
 	if hasUser {
-		buildScriptPath := filepath.Join(contextDir, "tmp", "build-init.sh")
+		buildScriptPath := filepath.Join(contextDir, "tmp", ".container.init")
 		buildScript, err := openFileExclusive(buildScriptPath, 0700)
 		if err != nil {
 			return nil, err
 		}
-		defer buildScript.Close()
 
 		err = buildTemplate.Execute(buildScript, struct{ User string }{user})
 		if err != nil {
 			return nil, err
 		}
+		buildScript.Close()
 
-		binds = append(binds, buildScriptPath+":/build-init.sh")
+		binds = append(binds, buildScriptPath+":/.container.init")
 	}
 
 	hostConfig := docker.HostConfig{Binds: binds}
