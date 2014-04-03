@@ -9,7 +9,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/pmorie/go-sti"
+	"github.com/openshift/go-sti"
 	"github.com/smarterclayton/cobra"
 )
 
