@@ -9,7 +9,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/openshift/geard/pkg/go-sti"
+	"github.com/openshift/go-sti"
 	"github.com/spf13/cobra"
 )
 
