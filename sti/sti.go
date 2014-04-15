@@ -58,14 +58,20 @@ func Execute() {
 	stiCmd.PersistentFlags().BoolVar(&(req.Debug), "debug", false, "Enable debugging output")
 
 	buildCmd := &cobra.Command{
-		Use:   "build SOURCE BUILD_IMAGE APP_IMAGE_TAG",
+		Use:   "build SOURCE BUILD_IMAGE [APP_IMAGE_TAG]",
 		Short: "Build an image",
 		Long:  "Build an image",
 		Run: func(cmd *cobra.Command, args []string) {
 			buildReq.Request = req
 			buildReq.Source = args[0]
 			buildReq.BaseImage = args[1]
-			buildReq.Tag = args[2]
+			if len(args) > 2 {
+				buildReq.Tag = args[2]
+			} else {
+				url_segments := strings.Split(args[0], "/")
+				buildReq.Tag = url_segments[len(url_segments)-1]
+			}
+
 			buildReq.Writer = os.Stdout
 
 			envs, _ := parseEnvs(envString)
