@@ -8,7 +8,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"text/template"
 
@@ -53,7 +52,7 @@ func Build(req BuildRequest) (*BuildResult, error) {
 	// build should be performed
 	tag := req.Tag
 	if req.RuntimeImage != "" {
-		tag = tag + "-build"
+		tag += "-build"
 	}
 
 	if incremental {
@@ -77,7 +76,7 @@ func Build(req BuildRequest) (*BuildResult, error) {
 		if incremental {
 			log.Printf("Existing image for tag %s detected for incremental build\n", tag)
 		} else {
-			log.Printf("Clean build will be performed")
+			log.Println("Clean build will be performed")
 		}
 	}
 
@@ -259,15 +258,16 @@ func (h requestHandler) saveArtifacts(image string, path string) error {
 }
 
 func (h requestHandler) prepareSourceDir(source string, targetSourceDir string) error {
-	re := regexp.MustCompile("^git://")
-
-	if re.MatchString(source) {
+	// Support git:// and https:// schema for GIT repositories
+	//
+	if strings.HasPrefix(source, "git://") || strings.HasPrefix(source, "https://") {
 		if h.debug {
 			log.Printf("Fetching %s to directory %s", source, targetSourceDir)
 		}
-		err := gitClone(source, targetSourceDir)
+		output, err := gitClone(source, targetSourceDir)
 		if err != nil {
 			if h.debug {
+				log.Println(output)
 				log.Printf("Git clone failed: %+v", err)
 			}
 			return err
