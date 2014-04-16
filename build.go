@@ -390,6 +390,26 @@ func (h requestHandler) buildDeployableImageWithDockerBuild(req BuildRequest, im
 	defer dockerFile.Close()
 
 	imageMetadata, err := h.dockerClient.InspectImage(image)
+
+	// If image does not exists locally, pull it from Docker registry and then
+	// retry the build
+	if err == docker.ErrNoSuchImage {
+		if h.debug {
+			log.Printf("Image %s was not found locally, pulling it from Docker registry", image)
+		}
+
+		err = h.dockerClient.PullImage(docker.PullImageOptions{Repository: image,
+			OutputStream: os.Stdout}, docker.AuthConfiguration{})
+
+		if err != nil {
+			return nil, err
+		}
+
+		imageMetadata, err = h.dockerClient.InspectImage(image)
+	} else if err != nil {
+		return nil, err
+	}
+
 	if err != nil {
 		return nil, err
 	}
