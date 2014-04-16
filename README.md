@@ -120,7 +120,7 @@ This behavior can be disabled with the `--clean` option.
 
 #### Installation
 
-	go get github.com/pmorie/go-sti/sti
+	go get github.com/openshift/go-sti/sti
 
 #### Example
 
