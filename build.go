@@ -33,7 +33,7 @@ type BuildResult STIResult
 func Build(req BuildRequest) (*BuildResult, error) {
 	method := req.Method
 	if method == "" {
-		req.Method = "build"
+		req.Method = "run"
 	} else {
 		if !stringInSlice(method, []string{"run", "build"}) {
 			return nil, ErrInvalidBuildMethod
