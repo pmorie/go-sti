@@ -113,7 +113,7 @@ func (h requestHandler) containerFromImage(imageName string) (*docker.Container,
 
 // Remove a container and its associated volumes.
 func (h requestHandler) removeContainer(id string) {
-	h.dockerClient.RemoveContainer(docker.RemoveContainerOptions{id, true})
+	h.dockerClient.RemoveContainer(docker.RemoveContainerOptions{id, true, true})
 }
 
 // Commit the container with the given ID with the given tag.
