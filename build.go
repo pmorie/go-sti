@@ -6,7 +6,6 @@ import (
 	"io"
 	"log"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"text/template"
@@ -549,43 +548,19 @@ func (h requestHandler) buildDeployableImageWithDockerRun(req BuildRequest, imag
 		return nil, ErrBuildFailed
 	}
 
-	// config = docker.Config{Image: image, Cmd: []string{"/usr/bin/run"}, Env: cmdEnv}
-	// if h.debug {
-	// 	log.Printf("Commiting container with config: %+v\n", config)
-	// }
+	config = docker.Config{Image: image, Cmd: []string{"/usr/bin/run"}, Env: cmdEnv}
+	if h.debug {
+		log.Printf("Commiting container with config: %+v\n", config)
+	}
 
-	// builtImage, err := h.dockerClient.CommitContainer(docker.CommitContainerOptions{Container: container.ID, Repository: req.Tag, Run: &config})
-	// if err != nil {
-	// 	return nil, ErrBuildFailed
-	// }
-
-	// if h.debug {
-	// 	log.Printf("Built image: %+v\n", builtImage)
-	// }
-
-	// temporary hack to work around bug in go-dockerclient
-	err = h.commitContainerWithCli(container.ID, req.Tag, cmdEnv)
+	builtImage, err := h.dockerClient.CommitContainer(docker.CommitContainerOptions{Container: container.ID, Repository: req.Tag, Run: &config})
 	if err != nil {
-		return nil, err
+		return nil, ErrBuildFailed
+	}
+
+	if h.debug {
+		log.Printf("Built image: %+v\n", builtImage)
 	}
 
 	return &BuildResult{true, nil}, nil
-}
-
-func (h requestHandler) commitContainerWithCli(id, tag string, env []string) error {
-	c := exec.Command("/usr/bin/docker", "commit", `-run={"Cmd": ["/usr/bin/run"]}`, id, tag)
-	var out, stdErr bytes.Buffer
-	c.Stdout = &out
-	c.Stderr = &stdErr
-
-	err := c.Run()
-	if h.debug {
-		log.Printf("Commit output: %s\n", out.String())
-		log.Printf("Commit stderr: %s\n", stdErr.String())
-	}
-	if err != nil {
-		return err
-	}
-
-	return nil
 }
